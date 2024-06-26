@@ -40,6 +40,8 @@ pub mod crowdfund {
         (&mut ctx.accounts.surge).amount_deposited += amount;
         (&mut ctx.accounts.receipt).lamports += amount;
         (&mut ctx.accounts.receipt).claimed = false;
+        (&mut ctx.accounts.receipt).owner = &from_account.key;
+
         msg!("User funded program with { } lamports", amount);
         Ok(())
     }
@@ -57,26 +59,31 @@ pub mod crowdfund {
         let surge = &mut ctx.accounts.surge;
         let signer = &mut ctx.accounts.signer;
         let receipt = &mut ctx.accounts.receipt;
-        let surge_ata = &ctx.accounts.surge_ata;
+        let surge_escrow_ata = &ctx.accounts.surge_escrow_ata;
         let user_ata = &ctx.accounts.signer_ata;
+
+        //do I need to explicitly check that receipt is tied to the to_account somehow?
+        //yeah probably - need someway to secure that when tokens are claimed, they can only be claimed to the entitled account
+        if recepit.owner != signer.key {
+            return Err(ErrorCode::NotAuthorizedToClaim.into())
+        }
 
         if receipt.claimed {
             return Err(ErrorCode::AlreadyClaimed.into());
         }
+        //Do I additionally need to confirm that the user_ata is linked to the signer
+        //i.e. is it currently an attack vector that anyone could pass in any user_ata
+        //right now, given that the person who triggers via signing has to have their pubkey on the receipt it's fine
+        //basically, only the "owner" of the funds could take advantage by passing in a different ata
+
         //Calculate amount of purchased SPL a user is entitled to
         let total_pool = surge.amount_deposited * 0.95;
         let percentage_share = receipt.lamports / total_pool;
         let claim_amount = percentage_share * total_pool;
         
-        //Does signer need to be the surge_ata, since it's the from
-        //if so, how do we ensure that surge private key isn't exposed to user
-        //seems that a program can sign from PDAs but other programs can't
-
-        //do I need to explicitly check that receipt is tied to the to_account somehow?
-        
         //determine entitlement based on claim
         let cpi_accounts = SplTransfer {
-            from: surge_ata.to_account_info().clone(),
+            from: surge_escrow_ata.to_account_info().clone(),
             to: user_ata.to_account_info().clone(),
             authority: surge.to_account_info().clone(),
         };
@@ -131,7 +138,20 @@ pub struct Deploy<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
     #[account(mut)]
-    pub surge: Account<'info, Surge>
+    pub surge: Account<'info, Surge>,
+    mint: Account<'info, Mint>,
+    //an escrow token account needs to be created here - this is where SPLs will be claimed to
+    //it's owned by the Surge account, which is owned by the program - surge will need to be the authority
+    //when transferring from the surge escrow ata
+    #[account(
+        init,
+        payer = signer,
+        token::mint = mint,
+        token::authority = surge
+    )]
+    pub surge_escrow_ata: Account<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>
 }
 
 #[derive(Accounts)]
@@ -140,7 +160,7 @@ pub struct Claim<'info> {
     pub surge: Account<'info, Surge>,
     pub receipt: Account<'info, Receipt>,
     #[account(mut)]
-    pub surge_ata: Account<'info, TokenAccount>,
+    pub surge_escrow_ata: Account<'info, TokenAccount>,
     #[account(mut)]
     pub signer_ata: Account<'info, TokenAccount>
 }
@@ -150,6 +170,7 @@ pub struct Receipt {
     lamports: u64,
     vote: String,
     claimed: bool,
+    owner: Pubkey,
     //does this need an owner - probably not, it's a PDA
 }
 #[account]
@@ -167,4 +188,8 @@ pub enum ErrorCode {
 pub enum ErrorCode {
     #[msg("The signer has already claimed funds.")]
     AlreadyClaimed,
+}
+pub enum ErrorCode {
+    #[msg("Not authorized to claim.")]
+    NotAuthorizedToClaim,
 }
