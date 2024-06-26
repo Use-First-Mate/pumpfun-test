@@ -49,9 +49,25 @@ pub mod crowdfund {
     pub fn deploy(ctx: Context<Deploy>) -> Result<()> {
         let surge = &mut ctx.accounts.surge;
         let signer = &mut ctx.accounts.signer;
+        //funds can only be deployed by admin
         if surge.admin != *signer.key {
             return Err(ErrorCode::NotAdmin.into());
         }
+        //creator take 5% cut
+        let creatorFee = surge.amount_deposited * 0.05;
+        let deployAmount = surge.amount_deposited - creatorFee;
+
+        let transfer_fee_instruction = system_instruction::transfer(&surge.key, signer.key, deployAmount);
+
+        anchor_lang::solana_program::program::invoke_signed(
+            &transfer_fee_instruction, 
+            &[ surge.to_account_info(),
+                signer.clone(),
+                ctx.accounts.system_program.to_account_info()
+            ], 
+            [surge] //authorized to transfer and should be able to sign as PDA
+        );
+
         msg!("Admin deploying program");
         Ok(())
     }
@@ -134,12 +150,11 @@ pub struct Fund<'info> {
 
 #[derive(Accounts)]
 pub struct Deploy<'info> {
-    //What accounts need to be here, signer + surge + whatever is required to interact wit hcontract
     #[account(mut)]
     pub signer: Signer<'info>,
     #[account(mut)]
     pub surge: Account<'info, Surge>,
-    mint: Account<'info, Mint>,
+    pub mint: Account<'info, Mint>,
     //an escrow token account needs to be created here - this is where SPLs will be claimed to
     //it's owned by the Surge account, which is owned by the program - surge will need to be the authority
     //when transferring from the surge escrow ata
@@ -150,6 +165,7 @@ pub struct Deploy<'info> {
         token::authority = surge
     )]
     pub surge_escrow_ata: Account<'info, TokenAccount>,
+    //need account to transfer 5% of sol to
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>
 }
