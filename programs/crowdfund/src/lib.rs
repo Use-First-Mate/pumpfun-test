@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::system_instruction;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer as SplTransfer};
+use anchor_spl::token::{self, Token, TokenAccount, Transfer as SplTransfer };
 
 declare_id!("85oFXf2BbhwsdwP4kbrdxhg5f9gBamehgiL8dFCDAAxg");
 
@@ -40,7 +40,7 @@ pub mod crowdfund {
         (&mut ctx.accounts.surge).amount_deposited += amount;
         (&mut ctx.accounts.receipt).lamports += amount;
         (&mut ctx.accounts.receipt).claimed = false;
-        (&mut ctx.accounts.receipt).owner = &from_account.key;
+        (&mut ctx.accounts.receipt).owner = from_account.key().clone();
 
         msg!("User funded program with { } lamports", amount);
         Ok(())
@@ -54,19 +54,19 @@ pub mod crowdfund {
             return Err(ErrorCode::NotAdmin.into());
         }
         //creator take 5% cut
-        let creatorFee = surge.amount_deposited * 0.05;
-        let deployAmount = surge.amount_deposited - creatorFee;
+        let creator_fee = surge.amount_deposited * 5 /100;
+        let deploy_amount = surge.amount_deposited - creator_fee;
 
-        let transfer_fee_instruction = system_instruction::transfer(&surge.key, signer.key, deployAmount);
+        let transfer_fee_instruction = system_instruction::transfer(&surge.key(), signer.key, deploy_amount);
 
         anchor_lang::solana_program::program::invoke_signed(
             &transfer_fee_instruction, 
             &[ surge.to_account_info(),
-                signer.clone(),
+                signer.to_account_info(),
                 ctx.accounts.system_program.to_account_info()
             ], 
-            [surge] //authorized to transfer and should be able to sign as PDA
-        );
+            &[] //uses transaction signers account automatically I think https://guides.quicknode.com/guides/solana-development/anchor/transfer-tokens#create-a-transfer-lamports-sol-function
+        )?;
 
         msg!("Admin deploying program");
         Ok(())
@@ -77,10 +77,11 @@ pub mod crowdfund {
         let receipt = &mut ctx.accounts.receipt;
         let surge_escrow_ata = &ctx.accounts.surge_escrow_ata;
         let user_ata = &ctx.accounts.signer_ata;
+        let token_program = &ctx.accounts.token_program;
 
         //do I need to explicitly check that receipt is tied to the to_account somehow?
         //yeah probably - need someway to secure that when tokens are claimed, they can only be claimed to the entitled account
-        if recepit.owner != signer.key {
+        if receipt.owner != *signer.key {
             return Err(ErrorCode::NotAuthorizedToClaim.into())
         }
 
@@ -93,7 +94,7 @@ pub mod crowdfund {
         //basically, only the "owner" of the funds could take advantage by passing in a different ata
 
         //Calculate amount of purchased SPL a user is entitled to
-        let total_pool = surge.amount_deposited * 0.95;
+        let total_pool = surge.amount_deposited * 95 / 100;
         let percentage_share = receipt.lamports / total_pool;
         let claim_amount = percentage_share * total_pool;
         
@@ -110,7 +111,7 @@ pub mod crowdfund {
             CpiContext::new(cpi_program, cpi_accounts),
             claim_amount)?;
         
-        (&mut receipt).claimed = true;
+        receipt.claimed = true;
         msg!("user claiming token");
         Ok(())
     }
@@ -134,7 +135,7 @@ pub struct Initialize<'info> {
 #[derive(Accounts)]
 pub struct Fund<'info> {
     #[account(
-        init_if_needed,
+        init,
         payer = signer,
         space = 8 + 8 + 200,
         seeds = [signer.key().as_ref()],
@@ -154,19 +155,19 @@ pub struct Deploy<'info> {
     pub signer: Signer<'info>,
     #[account(mut)]
     pub surge: Account<'info, Surge>,
-    pub mint: Account<'info, Mint>,
+    //pub mint: Account<'info, Mint>,
     //an escrow token account needs to be created here - this is where SPLs will be claimed to
     //it's owned by the Surge account, which is owned by the program - surge will need to be the authority
     //when transferring from the surge escrow ata
-    #[account(
-        init,
-        payer = signer,
-        token::mint = mint,
-        token::authority = surge
-    )]
-    pub surge_escrow_ata: Account<'info, TokenAccount>,
+    // #[account(
+    //     init,
+    //     payer = signer,
+    //     token::mint = mint,
+    //     token::authority = surge
+    // )]
+    // pub surge_escrow_ata: Account<'info, TokenAccount>,
     //need account to transfer 5% of sol to
-    pub token_program: Program<'info, Token>,
+    //pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>
 }
 
@@ -174,11 +175,14 @@ pub struct Deploy<'info> {
 pub struct Claim<'info> {
     pub signer: Signer<'info>,
     pub surge: Account<'info, Surge>,
+    #[account(mut)]
     pub receipt: Account<'info, Receipt>,
     #[account(mut)]
     pub surge_escrow_ata: Account<'info, TokenAccount>,
     #[account(mut)]
-    pub signer_ata: Account<'info, TokenAccount>
+    pub signer_ata: Account<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
+
 }
 
 #[account]
@@ -200,12 +204,8 @@ pub struct Surge {
 pub enum ErrorCode {
     #[msg("The signer is not the admin of this surge account.")]
     NotAdmin,
-}
-pub enum ErrorCode {
     #[msg("The signer has already claimed funds.")]
     AlreadyClaimed,
-}
-pub enum ErrorCode {
     #[msg("Not authorized to claim.")]
     NotAuthorizedToClaim,
 }

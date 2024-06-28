@@ -114,6 +114,17 @@ describe("crowdfund", () => {
   })
   it("allows admin user to deploy funds", async () => {
     //admin user tries to deploy funds and succeeds
+    await program.methods
+      .deploy()
+      .accounts({
+        surge: surgePDA,
+        signer: signer.publicKey
+      })
+      .signers([signer])
+      .rpc
+  }),
+  it("deploys funds to admin wallet on deploy", async () => {
+
   }),
   it("disallows unauthorized users from deploying funds", async () => {
     //one of the funders attempts to deploy funds and fails
