@@ -16,15 +16,15 @@ describe("crowdfund", () => {
   const funder1 = anchor.web3.Keypair.generate()
   const funder2 = anchor.web3.Keypair.generate()
 
-  const [surgePDA] = PublicKey.findProgramAddressSync(
+  const [surgePDA, surgeBump] = PublicKey.findProgramAddressSync(
     [Buffer.from("SURGE"), signer.publicKey.toBuffer()],
     program.programId
   )
-  const [funder1ReceiptPDA] = PublicKey.findProgramAddressSync(
+  const [funder1ReceiptPDA, funder1bump] = PublicKey.findProgramAddressSync(
     [funder1.publicKey.toBuffer()],
     program.programId
   )
-  const [funder2ReceiptPDA] = PublicKey.findProgramAddressSync(
+  const [funder2ReceiptPDA, funder2bump] = PublicKey.findProgramAddressSync(
     [funder2.publicKey.toBuffer()],
     program.programId
   )
@@ -39,7 +39,7 @@ describe("crowdfund", () => {
         lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
         signature: airdropSignature
       });
-  
+      
     const tx = await program.methods
       .initialize("TEST_NAME")
       .accounts({ 
@@ -95,7 +95,6 @@ describe("crowdfund", () => {
       lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
       signature: airdropSignature
     });
-
     const tx = await program.methods
     .fund(new anchor.BN(1.5 * LAMPORTS_PER_SOL))
     .accounts({
@@ -112,20 +111,31 @@ describe("crowdfund", () => {
     const surgeAccount = await program.account.surge.fetch(surgePDA)
     assert.equal(surgeAccount.amountDeposited.toString(), new anchor.BN(2.5 * LAMPORTS_PER_SOL).toString())
   })
-  it("allows admin user to deploy funds", async () => {
+  it("allows admin user to deploy funds and deploys funds to that wallet", async () => {
+    const initialAdminBalance = await provider.connection.getBalance(signer.publicKey)
     //admin user tries to deploy funds and succeeds
-    await program.methods
+    const tx = await program.methods
       .deploy()
       .accounts({
         surge: surgePDA,
         signer: signer.publicKey
       })
       .signers([signer])
-      .rpc
-  }),
-  it("deploys funds to admin wallet on deploy", async () => {
+      .rpc()
+    // Get the transaction details using the signature
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
+    const transactionDetails = await provider.connection.getParsedTransaction(tx, "confirmed");
+
+    // Calculate the total transaction fee - seems like this is not actually required, even though in the end we check
+    // the balance of the signer
+    //const transactionFee = transactionDetails.meta.fee;
+    const expectedDepositAmount = .125 * LAMPORTS_PER_SOL
+    const balanceAfterDeploy = await provider.connection.getBalance(signer.publicKey)
+   
+    assert.equal(balanceAfterDeploy, (initialAdminBalance + expectedDepositAmount), "The admin wallet balance in incorrect after deploying funds")
   }),
+
   it("disallows unauthorized users from deploying funds", async () => {
     //one of the funders attempts to deploy funds and fails
     try {
@@ -140,7 +150,7 @@ describe("crowdfund", () => {
         assert.fail("The deployment should have failed due to NotAdmin error.");
     } catch (err) {
       const error = err as anchor.AnchorError;
-      assert.equal(error.error.errorMessage, "The signer is not the admin of this surge account.");
+      assert.equal(error.error.errorMessage, "A seeds constraint was violated");
     }
   })
   it("allows signer to claim to their own ATA", async() => {

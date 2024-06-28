@@ -1,11 +1,14 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::system_instruction;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer as SplTransfer };
+use anchor_lang::system_program::{Transfer, transfer};
+use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer as SplTransfer };
 
 declare_id!("85oFXf2BbhwsdwP4kbrdxhg5f9gBamehgiL8dFCDAAxg");
 
 #[program]
 pub mod crowdfund {
+    use anchor_lang::solana_program::program::invoke_signed;
+
     use super::*;
 
     pub fn initialize(ctx: Context<Initialize>, name: String) -> Result<()> {
@@ -24,7 +27,7 @@ pub mod crowdfund {
             &from_account.key(), 
             &to_account.key(), amount
         );
-
+        
         let result = anchor_lang::solana_program::program::invoke(
             &transfer_instruction, 
             &[
@@ -49,6 +52,9 @@ pub mod crowdfund {
     pub fn deploy(ctx: Context<Deploy>) -> Result<()> {
         let surge = &mut ctx.accounts.surge;
         let signer = &mut ctx.accounts.signer;
+
+        let bump_seed = ctx.bumps.surge;
+        //calculate surge seeds so it can sign fee collection
         //funds can only be deployed by admin
         if surge.admin != *signer.key {
             return Err(ErrorCode::NotAdmin.into());
@@ -56,17 +62,35 @@ pub mod crowdfund {
         //creator take 5% cut
         let creator_fee = surge.amount_deposited * 5 /100;
         let deploy_amount = surge.amount_deposited - creator_fee;
+        
+        // let transfer_fee_instruction = system_instruction::transfer(&surge.key(), signer.key, deploy_amount);
 
-        let transfer_fee_instruction = system_instruction::transfer(&surge.key(), signer.key, deploy_amount);
+        // invoke_signed(
+        //     &transfer_fee_instruction, 
+        //     &[ 
+        //         surge.to_account_info(),
+        //         signer.to_account_info(),
+        //         ctx.accounts.system_program.to_account_info(),
+        //     ], 
+        //     surge_seeds,
+        // )?;
+        
+        // let cpi_context = CpiContext::new(
+        //     ctx.accounts.system_program.to_account_info(), 
+        //     Transfer{
+        //         from: ctx.accounts.surge.to_account_info(),
+        //         to: ctx.accounts.signer.to_account_info()
+        //     }).with_signer(surge_seeds);
 
-        anchor_lang::solana_program::program::invoke_signed(
-            &transfer_fee_instruction, 
-            &[ surge.to_account_info(),
-                signer.to_account_info(),
-                ctx.accounts.system_program.to_account_info()
-            ], 
-            &[] //uses transaction signers account automatically I think https://guides.quicknode.com/guides/solana-development/anchor/transfer-tokens#create-a-transfer-lamports-sol-function
-        )?;
+        //transfer(cpi_context, deploy_amount);
+        **ctx.accounts.surge
+            .to_account_info()
+            .try_borrow_mut_lamports()? -= creator_fee;
+
+        **ctx.accounts.signer
+            .to_account_info()
+            .try_borrow_mut_lamports()? += creator_fee;
+            
 
         msg!("Admin deploying program");
         Ok(())
@@ -153,7 +177,11 @@ pub struct Fund<'info> {
 pub struct Deploy<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [b"SURGE".as_ref(), signer.key().as_ref()],
+        bump
+    )]
     pub surge: Account<'info, Surge>,
     //pub mint: Account<'info, Mint>,
     //an escrow token account needs to be created here - this is where SPLs will be claimed to
