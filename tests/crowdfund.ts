@@ -3,11 +3,18 @@ import { Program } from "@coral-xyz/anchor";
 import { PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { Crowdfund } from "../target/types/crowdfund";
 import { assert } from "chai";
+import * as splToken from "@solana/spl-token"
 
 describe("crowdfund", () => {
   // Configure the client to use the local cluster.
   const provider = anchor.AnchorProvider.env()
   anchor.setProvider(provider);
+
+  const SPL_CONVERSION = 10_000; //set the exchange rate of our SPL 10_000 per SOL
+  //SOL denominated deposit for funders + derived total
+  const funder1_deposit = 1
+  const funder2_deposit = 1.5
+  const total_deposit = funder1_deposit + funder2_deposit
 
   const program = anchor.workspace.Crowdfund as Program<Crowdfund>;
 
@@ -28,17 +35,72 @@ describe("crowdfund", () => {
     [funder2.publicKey.toBuffer()],
     program.programId
   )
+  const mintKeyPair = anchor.web3.Keypair.generate()
+
+  let surgeAta
+  let mintProgram
+  before( async () => {
+    const airdropSignature = await provider.connection.requestAirdrop(signer.publicKey, 5 * LAMPORTS_PER_SOL)
+    const latestBlockHash = await provider.connection.getLatestBlockhash();
+    await provider.connection.confirmTransaction({
+      blockhash: latestBlockHash.blockhash,
+      lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
+      signature: airdropSignature
+    });
+
+    const funder1AirdropSignature = await provider.connection.requestAirdrop(funder1.publicKey, 2 * LAMPORTS_PER_SOL)
+    const funder1LatestBlockHash = await provider.connection.getLatestBlockhash();
+    await provider.connection.confirmTransaction({
+      blockhash: funder1LatestBlockHash.blockhash,
+      lastValidBlockHeight: funder1LatestBlockHash.lastValidBlockHeight,
+      signature: airdropSignature,
+    });
+
+    //This is stub out for allowing surge to purchase tokens directly
+    //It is going to "mintTo" a surge ATA a fixed amount of an SPL
+    //which will later be claimed by receipt owner
+    mintProgram = await splToken.createMint(
+      provider.connection,
+      signer,
+      mintKeyPair.publicKey,
+      null,
+      9,
+      undefined,
+      {},
+      splToken.TOKEN_PROGRAM_ID
+    )
+    //create ATA for surge account
+    surgeAta = await splToken.getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      signer,
+      mintProgram,
+      surgePDA,
+      true
+    )
+
+    console.log("SURGE ATA IS " + surgeAta.address)
+    const mint = await splToken.mintTo(
+      provider.connection,
+      signer,
+      mintProgram,
+      surgeAta.address,
+      mintKeyPair,
+      total_deposit * SPL_CONVERSION,
+      [],
+      undefined,
+      splToken.TOKEN_PROGRAM_ID
+    )
+    const populatedAta = await splToken.getAccount(
+      provider.connection,
+      surgeAta.address,
+    )
+    console.log(populatedAta)
+  })
+  //create an SPL mint that we can use for testing
+  //this is a stub, will need to be replaced with interaction w/ pump fun
+
   it("Is initialized with the correct name", async () => {
-        // Airdrop SOL to the signer
-
-      const airdropSignature = await provider.connection.requestAirdrop(signer.publicKey, 2 * LAMPORTS_PER_SOL)
-      const latestBlockHash = await provider.connection.getLatestBlockhash();
-
-      await provider.connection.confirmTransaction({
-        blockhash: latestBlockHash.blockhash,
-        lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-        signature: airdropSignature
-      });
+      // Airdrop SOL to the signer
       
     const tx = await program.methods
       .initialize("TEST_NAME")
@@ -47,7 +109,7 @@ describe("crowdfund", () => {
       })
       .signers([signer])
       .rpc();
-        
+    
     const surgeAccount = await program.account.surge.fetch(surgePDA);
 
     // Check if the name is correctly set
@@ -58,17 +120,9 @@ describe("crowdfund", () => {
 
   it("accepts funds from user", async () => {
     //fund with funder 1, and confirm that pool amount is equal to expected amt
-    const airdropSignature = await provider.connection.requestAirdrop(funder1.publicKey, 2 * LAMPORTS_PER_SOL)
-    const latestBlockHash = await provider.connection.getLatestBlockhash();
-
-    await provider.connection.confirmTransaction({
-      blockhash: latestBlockHash.blockhash,
-      lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-      signature: airdropSignature
-    });
     
     const tx = await program.methods
-      .fund(new anchor.BN(1 * LAMPORTS_PER_SOL))
+      .fund(new anchor.BN(funder1_deposit * LAMPORTS_PER_SOL))
       .accounts({
         signer: funder1.publicKey,
         surge: surgePDA,
@@ -79,10 +133,10 @@ describe("crowdfund", () => {
     //confirm that tx has succeeded
     //confirm recepit amount
     const funder1Receipt = await program.account.receipt.fetch(funder1ReceiptPDA)
-    assert.equal(funder1Receipt.lamports.toString(), new anchor.BN(1 * LAMPORTS_PER_SOL).toString())
+    assert.equal(funder1Receipt.lamports.toString(), new anchor.BN(funder1_deposit * LAMPORTS_PER_SOL).toString())
     //confirm surge amount
     const surgeAccount = await program.account.surge.fetch(surgePDA)
-    assert.equal(surgeAccount.amountDeposited.toString(), new anchor.BN(1 * LAMPORTS_PER_SOL).toString())
+    assert.equal(surgeAccount.amountDeposited.toString(), new anchor.BN(funder1_deposit * LAMPORTS_PER_SOL).toString())
 
   })
   it("can pool funds from multiple users", async () => {
@@ -96,7 +150,7 @@ describe("crowdfund", () => {
       signature: airdropSignature
     });
     const tx = await program.methods
-    .fund(new anchor.BN(1.5 * LAMPORTS_PER_SOL))
+    .fund(new anchor.BN(funder2_deposit * LAMPORTS_PER_SOL))
     .accounts({
       signer: funder2.publicKey,
       surge: surgePDA,
@@ -106,10 +160,10 @@ describe("crowdfund", () => {
 
 
     const funder2Receipt = await program.account.receipt.fetch(funder2ReceiptPDA)
-    assert.equal(funder2Receipt.lamports.toString(), new anchor.BN(1.5 * LAMPORTS_PER_SOL).toString())
+    assert.equal(funder2Receipt.lamports.toString(), new anchor.BN(funder2_deposit * LAMPORTS_PER_SOL).toString())
     //confirm surge amount
     const surgeAccount = await program.account.surge.fetch(surgePDA)
-    assert.equal(surgeAccount.amountDeposited.toString(), new anchor.BN(2.5 * LAMPORTS_PER_SOL).toString())
+    assert.equal(surgeAccount.amountDeposited.toString(), new anchor.BN(total_deposit * LAMPORTS_PER_SOL).toString())
   })
   it("allows admin user to deploy funds and deploys funds to that wallet", async () => {
     const initialAdminBalance = await provider.connection.getBalance(signer.publicKey)
@@ -117,7 +171,6 @@ describe("crowdfund", () => {
     const tx = await program.methods
       .deploy()
       .accounts({
-        surge: surgePDA,
         signer: signer.publicKey
       })
       .signers([signer])
@@ -132,8 +185,11 @@ describe("crowdfund", () => {
     //const transactionFee = transactionDetails.meta.fee;
     const expectedDepositAmount = .125 * LAMPORTS_PER_SOL
     const balanceAfterDeploy = await provider.connection.getBalance(signer.publicKey)
-   
+    const surgeAccount = await program.account.surge.fetch(surgePDA)
+
+
     assert.equal(balanceAfterDeploy, (initialAdminBalance + expectedDepositAmount), "The admin wallet balance in incorrect after deploying funds")
+    assert.equal(surgeAccount.splAmount.toString(), (total_deposit * SPL_CONVERSION).toString(), "the SPL has not been correctly deposited")
   }),
 
   it("disallows unauthorized users from deploying funds", async () => {
@@ -142,19 +198,40 @@ describe("crowdfund", () => {
       await program.methods
         .deploy()
         .accounts({
-            surge: surgePDA,
             signer: funder1.publicKey
         })
         .signers([funder1])
         .rpc()
-        assert.fail("The deployment should have failed due to NotAdmin error.");
+        assert.fail("The program expected this account to be already initialized"); //tries to initialize new PDA with wrong
     } catch (err) {
       const error = err as anchor.AnchorError;
-      assert.equal(error.error.errorMessage, "A seeds constraint was violated");
+      assert.equal(error.error.errorMessage, "The program expected this account to be already initialized");
     }
   })
   it("allows signer to claim to their own ATA", async() => {
-
+    let funder1Ata = await splToken.getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      signer,
+      mintProgram,
+      funder1.publicKey,
+      true
+    )
+    await program.methods
+      .claim()
+      .accounts({
+        signer: funder1.publicKey,
+        surge: surgePDA,
+        receipt: funder1ReceiptPDA,
+        surgeEscrowAta: surgeAta.address,
+        signerAta: funder1Ata.address
+      })
+      .signers([funder1])
+      .rpc()
+      const populatedFunder1Ata = await splToken.getAccount(
+        provider.connection,
+        funder1Ata.address,
+      )
+      console.log(populatedFunder1Ata)
   })
   it("only doesn't allow signer to claim to other ATAf", async () => {
 

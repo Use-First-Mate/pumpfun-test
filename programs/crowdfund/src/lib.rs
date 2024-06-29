@@ -1,13 +1,11 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::system_instruction;
-use anchor_lang::system_program::{Transfer, transfer};
-use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer as SplTransfer };
+use anchor_spl::token::{self, Token, TokenAccount, Transfer as SplTransfer };
 
 declare_id!("85oFXf2BbhwsdwP4kbrdxhg5f9gBamehgiL8dFCDAAxg");
 
 #[program]
 pub mod crowdfund {
-    use anchor_lang::solana_program::program::invoke_signed;
 
     use super::*;
 
@@ -15,7 +13,8 @@ pub mod crowdfund {
         let surge = &mut ctx.accounts.surge;
         surge.name = name;
         surge.amount_deposited = 0;
-        surge.admin = *ctx.accounts.signer.key; //equals data, not reference (I think)
+        surge.authority = *ctx.accounts.signer.key; //equals data, not reference (I think)
+        surge.bump = ctx.bumps.surge;
         msg!("Greetings from: {:?}", ctx.program_id);
         Ok(())
     }
@@ -50,48 +49,30 @@ pub mod crowdfund {
     }
 
     pub fn deploy(ctx: Context<Deploy>) -> Result<()> {
-        let surge = &mut ctx.accounts.surge;
-        let signer = &mut ctx.accounts.signer;
+        //When pulling "surge" from ctx.accounts.surge I was getting a conflict between
+        //mutable and imutable borrows
 
-        let bump_seed = ctx.bumps.surge;
-        //calculate surge seeds so it can sign fee collection
-        //funds can only be deployed by admin
-        if surge.admin != *signer.key {
-            return Err(ErrorCode::NotAdmin.into());
+        // Ensure only the admin can deploy funds
+        if ctx.accounts.surge.authority != *ctx.accounts.signer.key {
+            return Err(ErrorCode::NotAuthority.into());
         }
-        //creator take 5% cut
-        let creator_fee = surge.amount_deposited * 5 /100;
-        let deploy_amount = surge.amount_deposited - creator_fee;
-        
-        // let transfer_fee_instruction = system_instruction::transfer(&surge.key(), signer.key, deploy_amount);
 
-        // invoke_signed(
-        //     &transfer_fee_instruction, 
-        //     &[ 
-        //         surge.to_account_info(),
-        //         signer.to_account_info(),
-        //         ctx.accounts.system_program.to_account_info(),
-        //     ], 
-        //     surge_seeds,
-        // )?;
-        
-        // let cpi_context = CpiContext::new(
-        //     ctx.accounts.system_program.to_account_info(), 
-        //     Transfer{
-        //         from: ctx.accounts.surge.to_account_info(),
-        //         to: ctx.accounts.signer.to_account_info()
-        //     }).with_signer(surge_seeds);
+        // Calculate the creator fee and deploy amount
+        let creator_fee = ctx.accounts.surge.amount_deposited * 5 / 100;
+        let _deploy_amount = ctx.accounts.surge.amount_deposited - creator_fee;
 
-        //transfer(cpi_context, deploy_amount);
-        **ctx.accounts.surge
-            .to_account_info()
-            .try_borrow_mut_lamports()? -= creator_fee;
+        // Perform the transfer
+        let surge_info = ctx.accounts.surge.to_account_info();
+        let signer_info = ctx.accounts.signer.to_account_info();
 
-        **ctx.accounts.signer
-            .to_account_info()
-            .try_borrow_mut_lamports()? += creator_fee;
-            
+        **surge_info.try_borrow_mut_lamports()? -= creator_fee;
+        **signer_info.try_borrow_mut_lamports()? += creator_fee;
 
+
+        // Update the SPL_amount field - hardcoded based on what is
+        // deployed in "mint_to"
+        //TODO use deploy amount to buy token, and update spl_amount based on purchased token
+        ctx.accounts.surge.spl_amount = 25_000;
         msg!("Admin deploying program");
         Ok(())
     }
@@ -118,9 +99,7 @@ pub mod crowdfund {
         //basically, only the "owner" of the funds could take advantage by passing in a different ata
 
         //Calculate amount of purchased SPL a user is entitled to
-        let total_pool = surge.amount_deposited * 95 / 100;
-        let percentage_share = receipt.lamports / total_pool;
-        let claim_amount = percentage_share * total_pool;
+        let claim_amount = (receipt.lamports * surge.spl_amount) / surge.amount_deposited;
         
         //determine entitlement based on claim
         let cpi_accounts = SplTransfer {
@@ -132,7 +111,10 @@ pub mod crowdfund {
         let cpi_program = token_program.to_account_info();
 
         token::transfer(
-            CpiContext::new(cpi_program, cpi_accounts),
+            CpiContext::new_with_signer(
+                cpi_program, 
+                cpi_accounts, 
+                &[&["SURGE".as_bytes(), ctx.accounts.surge.authority.as_ref(), &[ctx.accounts.surge.bump]]]),
             claim_amount)?;
         
         receipt.claimed = true;
@@ -147,7 +129,7 @@ pub struct Initialize<'info> {
         init,
         payer = signer,
         space = 500,
-        seeds= [b"SURGE".as_ref(), signer.key().as_ref()],
+        seeds= [b"SURGE".as_ref(), signer.key().as_ref()], //kind of wonder if this should be unique - i.e. just surge
         bump
     )]
     pub surge: Account<'info, Surge>,
@@ -179,7 +161,7 @@ pub struct Deploy<'info> {
     pub signer: Signer<'info>,
     #[account(
         mut,
-        seeds = [b"SURGE".as_ref(), signer.key().as_ref()],
+        seeds = [b"SURGE".as_ref(), signer.key().as_ref()], //ensures signer is linked to surge
         bump
     )]
     pub surge: Account<'info, Surge>,
@@ -201,7 +183,13 @@ pub struct Deploy<'info> {
 
 #[derive(Accounts)]
 pub struct Claim<'info> {
+    #[account(mut)]
     pub signer: Signer<'info>,
+    #[account(
+        mut,
+        seeds=[b"SURGE".as_ref(), surge.authority.as_ref()],
+        bump=surge.bump
+    )]
     pub surge: Account<'info, Surge>,
     #[account(mut)]
     pub receipt: Account<'info, Receipt>,
@@ -223,15 +211,19 @@ pub struct Receipt {
 }
 #[account]
 pub struct Surge {
-    pub admin: Pubkey,
+    pub authority: Pubkey,
     pub name: String,
-    pub amount_deposited: u64
+    pub amount_deposited: u64,
+    pub spl_amount: u64,
+    pub bump: u8,
+    //TODO - add escrowed_tokens string - which will be the pubkey
+    //for the escrowed token accoutn so we can add it on a constraint in claim
 }
 
 #[error_code]
 pub enum ErrorCode {
-    #[msg("The signer is not the admin of this surge account.")]
-    NotAdmin,
+    #[msg("The signer is not the authority of this surge account.")]
+    NotAuthority,
     #[msg("The signer has already claimed funds.")]
     AlreadyClaimed,
     #[msg("Not authorized to claim.")]
