@@ -22,6 +22,9 @@ pub mod crowdfund {
     pub fn fund(ctx: Context<Fund>, amount: u64) -> Result<()> {
         let from_account = &ctx.accounts.signer;
         let to_account = &ctx.accounts.surge;
+        if to_account.spl_amount > 0 {
+            return Err(ErrorCode::DepositsClosed.into())
+        }
         let transfer_instruction = system_instruction::transfer(
             &from_account.key(), 
             &to_account.key(), amount
@@ -84,15 +87,19 @@ pub mod crowdfund {
         let user_ata = &ctx.accounts.signer_ata;
         let token_program = &ctx.accounts.token_program;
 
+        
+        if surge.spl_amount <= 0 {
+            return Err(ErrorCode::ClaimNotOpen.into())
+        }
         //do I need to explicitly check that receipt is tied to the to_account somehow?
         //yeah probably - need someway to secure that when tokens are claimed, they can only be claimed to the entitled account
         if receipt.owner != *signer.key {
             return Err(ErrorCode::NotAuthorizedToClaim.into())
         }
-
         if receipt.claimed {
             return Err(ErrorCode::AlreadyClaimed.into());
         }
+
         //Do I additionally need to confirm that the user_ata is linked to the signer
         //i.e. is it currently an attack vector that anyone could pass in any user_ata
         //right now, given that the person who triggers via signing has to have their pubkey on the receipt it's fine
@@ -228,4 +235,8 @@ pub enum ErrorCode {
     AlreadyClaimed,
     #[msg("Not authorized to claim.")]
     NotAuthorizedToClaim,
+    #[msg("deposits closed")]
+    DepositsClosed,
+    #[msg("Funds not deployed yet")]
+    ClaimNotOpen
 }
