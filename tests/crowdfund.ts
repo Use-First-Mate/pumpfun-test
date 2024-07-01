@@ -165,6 +165,9 @@ describe("crowdfund", () => {
     const surgeAccount = await program.account.surge.fetch(surgePDA)
     assert.equal(surgeAccount.amountDeposited.toString(), new anchor.BN(total_deposit * LAMPORTS_PER_SOL).toString())
   })
+  it("doesn't allow users to claim before funds are deployed", async () => {
+
+  })
   it("allows admin user to deploy funds and deploys funds to that wallet", async () => {
     const initialAdminBalance = await provider.connection.getBalance(signer.publicKey)
     //admin user tries to deploy funds and succeeds
@@ -190,7 +193,7 @@ describe("crowdfund", () => {
 
     assert.equal(balanceAfterDeploy, (initialAdminBalance + expectedDepositAmount), "The admin wallet balance in incorrect after deploying funds")
     assert.equal(surgeAccount.splAmount.toString(), (total_deposit * SPL_CONVERSION).toString(), "the SPL has not been correctly deposited")
-  }),
+  })
 
   it("disallows unauthorized users from deploying funds", async () => {
     //one of the funders attempts to deploy funds and fails
@@ -208,7 +211,10 @@ describe("crowdfund", () => {
       assert.equal(error.error.errorMessage, "The program expected this account to be already initialized");
     }
   })
-  it("allows signer to claim to their own ATA", async() => {
+  it("doesn't allow futher funding after initial deploy", async () => {
+
+  })
+  it("allows signer to claim SPL and leftover SOL", async() => {
     let funder1Ata = await splToken.getOrCreateAssociatedTokenAccount(
       provider.connection,
       signer,
@@ -232,8 +238,34 @@ describe("crowdfund", () => {
         funder1Ata.address,
       )
       console.log(populatedFunder1Ata)
+      //TODO - make sure populatedFunder1Ata balance is what is expected
+      //
   })
-  it("only doesn't allow signer to claim to other ATAf", async () => {
+  it("only doesn't allow signer to claim to other ATA receipts", async () => {
+    let funder1Ata = await splToken.getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      signer,
+      mintProgram,
+      funder1.publicKey,
+      true
+    )
+    try {
+      await program.methods
+      .claim()
+      .accounts({
+        signer: funder1.publicKey,
+        surge: surgePDA,
+        receipt: funder2ReceiptPDA,
+        surgeEscrowAta: surgeAta.address,
+        signerAta: funder1Ata.address
+      })
+      .signers([funder1])
+      .rpc()
+      assert.fail()
+    } catch (err) {
+      const error = err as anchor.AnchorError;
+      assert.equal(error.error.errorMessage, "Not authorized to claim.");
+    }
 
   })
 });

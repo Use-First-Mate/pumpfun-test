@@ -15,7 +15,6 @@ pub mod crowdfund {
         surge.amount_deposited = 0;
         surge.authority = *ctx.accounts.signer.key; //equals data, not reference (I think)
         surge.bump = ctx.bumps.surge;
-        msg!("Greetings from: {:?}", ctx.program_id);
         Ok(())
     }
 
@@ -25,6 +24,7 @@ pub mod crowdfund {
         if to_account.spl_amount > 0 {
             return Err(ErrorCode::DepositsClosed.into())
         }
+        //add explicit check that .claimed is false and not true
         let transfer_instruction = system_instruction::transfer(
             &from_account.key(), 
             &to_account.key(), amount
@@ -43,7 +43,7 @@ pub mod crowdfund {
         //Update total campaign value
         //Update individual account amount
         (&mut ctx.accounts.surge).amount_deposited += amount;
-        (&mut ctx.accounts.receipt).lamports += amount;
+        (&mut ctx.accounts.receipt).amount_deposited += amount;
         (&mut ctx.accounts.receipt).claimed = false;
         (&mut ctx.accounts.receipt).owner = from_account.key().clone();
 
@@ -56,13 +56,13 @@ pub mod crowdfund {
         //mutable and imutable borrows
 
         // Ensure only the admin can deploy funds
-        if ctx.accounts.surge.authority != *ctx.accounts.signer.key {
+        if ctx.accounts.surge.authority != *ctx.accounts.signer.key { //TODO: move to validation with has_one
             return Err(ErrorCode::NotAuthority.into());
         }
 
         // Calculate the creator fee and deploy amount
         let creator_fee = ctx.accounts.surge.amount_deposited * 5 / 100;
-        let _deploy_amount = ctx.accounts.surge.amount_deposited - creator_fee;
+        let deploy_amount = ctx.accounts.surge.amount_deposited - creator_fee;
 
         // Perform the transfer
         let surge_info = ctx.accounts.surge.to_account_info();
@@ -76,6 +76,8 @@ pub mod crowdfund {
         // deployed in "mint_to"
         //TODO use deploy amount to buy token, and update spl_amount based on purchased token
         ctx.accounts.surge.spl_amount = 25_000;
+        //Stub out setting remaining solana amount after deploy
+        ctx.accounts.surge.leftover_sol = deploy_amount; //in future this will be a lot less
         msg!("Admin deploying program");
         Ok(())
     }
@@ -86,14 +88,15 @@ pub mod crowdfund {
         let surge_escrow_ata = &ctx.accounts.surge_escrow_ata;
         let user_ata = &ctx.accounts.signer_ata;
         let token_program = &ctx.accounts.token_program;
-
+        let surge_info = surge.to_account_info();
+        let signer_info = signer.to_account_info();
         
         if surge.spl_amount <= 0 {
             return Err(ErrorCode::ClaimNotOpen.into())
         }
         //do I need to explicitly check that receipt is tied to the to_account somehow?
         //yeah probably - need someway to secure that when tokens are claimed, they can only be claimed to the entitled account
-        if receipt.owner != *signer.key {
+        if receipt.owner != *signer.key { //TODO: make this an account constraint
             return Err(ErrorCode::NotAuthorizedToClaim.into())
         }
         if receipt.claimed {
@@ -106,8 +109,8 @@ pub mod crowdfund {
         //basically, only the "owner" of the funds could take advantage by passing in a different ata
 
         //Calculate amount of purchased SPL a user is entitled to
-        let claim_amount = (receipt.lamports * surge.spl_amount) / surge.amount_deposited;
-        
+        let claim_amount = (receipt.amount_deposited * surge.spl_amount) / surge.amount_deposited;
+        let sol_claim_amount = (receipt.amount_deposited * surge.leftover_sol) / surge.amount_deposited;
         //determine entitlement based on claim
         let cpi_accounts = SplTransfer {
             from: surge_escrow_ata.to_account_info().clone(),
@@ -123,6 +126,10 @@ pub mod crowdfund {
                 cpi_accounts, 
                 &[&["SURGE".as_bytes(), ctx.accounts.surge.authority.as_ref(), &[ctx.accounts.surge.bump]]]),
             claim_amount)?;
+        
+        //transfer sol share
+        **surge_info.try_borrow_mut_lamports()? -= sol_claim_amount;
+        **signer_info.try_borrow_mut_lamports()? += sol_claim_amount;
         
         receipt.claimed = true;
         msg!("user claiming token");
@@ -151,7 +158,7 @@ pub struct Fund<'info> {
         init,
         payer = signer,
         space = 8 + 8 + 200,
-        seeds = [signer.key().as_ref()],
+        seeds = [signer.key().as_ref()], //if we do multiple surge's per contract the surge should have a receipt
         bump
     )]
     pub receipt: Account<'info, Receipt>,
@@ -210,11 +217,10 @@ pub struct Claim<'info> {
 
 #[account]
 pub struct Receipt {
-    lamports: u64,
-    vote: String,
+    amount_deposited: u64,
+    vote: Pubkey,
     claimed: bool,
     owner: Pubkey,
-    //does this need an owner - probably not, it's a PDA
 }
 #[account]
 pub struct Surge {
@@ -222,9 +228,9 @@ pub struct Surge {
     pub name: String,
     pub amount_deposited: u64,
     pub spl_amount: u64,
+    pub spl_address: Pubkey,
+    pub leftover_sol: u64,
     pub bump: u8,
-    //TODO - add escrowed_tokens string - which will be the pubkey
-    //for the escrowed token accoutn so we can add it on a constraint in claim
 }
 
 #[error_code]
