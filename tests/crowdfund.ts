@@ -133,7 +133,7 @@ describe("crowdfund", () => {
     //confirm that tx has succeeded
     //confirm recepit amount
     const funder1Receipt = await program.account.receipt.fetch(funder1ReceiptPDA)
-    assert.equal(funder1Receipt.lamports.toString(), new anchor.BN(funder1_deposit * LAMPORTS_PER_SOL).toString())
+    assert.equal(funder1Receipt.amountDeposited.toString(), new anchor.BN(funder1_deposit * LAMPORTS_PER_SOL).toString())
     //confirm surge amount
     const surgeAccount = await program.account.surge.fetch(surgePDA)
     assert.equal(surgeAccount.amountDeposited.toString(), new anchor.BN(funder1_deposit * LAMPORTS_PER_SOL).toString())
@@ -160,7 +160,7 @@ describe("crowdfund", () => {
 
 
     const funder2Receipt = await program.account.receipt.fetch(funder2ReceiptPDA)
-    assert.equal(funder2Receipt.lamports.toString(), new anchor.BN(funder2_deposit * LAMPORTS_PER_SOL).toString())
+    assert.equal(funder2Receipt.amountDeposited.toString(), new anchor.BN(funder2_deposit * LAMPORTS_PER_SOL).toString())
     //confirm surge amount
     const surgeAccount = await program.account.surge.fetch(surgePDA)
     assert.equal(surgeAccount.amountDeposited.toString(), new anchor.BN(total_deposit * LAMPORTS_PER_SOL).toString())
