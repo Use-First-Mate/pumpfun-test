@@ -10,6 +10,8 @@ declare_id!("85oFXf2BbhwsdwP4kbrdxhg5f9gBamehgiL8dFCDAAxg");
 #[program]
 pub mod crowdfund {
 
+    use anchor_lang::system_program::Transfer;
+
     use super::*;
 
     pub fn initialize(ctx: Context<Initialize>, name: String, threshold: u64) -> Result<()> {
@@ -194,8 +196,17 @@ pub mod crowdfund {
             claim_amount)?;
         
         //transfer sol share
-        **surge_info.try_borrow_mut_lamports()? -= sol_claim_amount;
-        **signer_info.try_borrow_mut_lamports()? += sol_claim_amount;
+        anchor_lang::system_program::transfer(
+          CpiContext::new_with_signer(
+            ctx.accounts.system_program.to_account_info(), 
+            Transfer {
+              from: ctx.accounts.pda_vault.to_account_info(),
+              to: ctx.accounts.owner.to_account_info(),
+            }, 
+            &[pda_vault_signer]
+          ), 
+          sol_claim_amount,
+        )?;
         
         receipt.claimed = true;
         msg!("user claiming token");
@@ -323,6 +334,7 @@ pub struct Claim<'info> {
     #[account(mut)]
     pub signer_ata: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
 
 }
 
