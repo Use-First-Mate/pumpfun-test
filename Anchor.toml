@@ -7,7 +7,7 @@ skip-lint = false
 
 [programs.localnet]
 crowdfund = "85oFXf2BbhwsdwP4kbrdxhg5f9gBamehgiL8dFCDAAxg"
-pump_fun = "7Ff787g7SPANts3km5dRKFDo8ytqJVHe5n8GQCdpV9Do"
+pump_fun = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
 
 [registry]
 url = "https://api.apr.dev"
