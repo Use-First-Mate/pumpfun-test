@@ -35,6 +35,10 @@ describe("crowdfund", () => {
     [funder2.publicKey.toBuffer()],
     program.programId
   )
+  const [vaultPda, ] = PublicKey.findProgramAddressSync(
+    [Buffer.from("VAULT"), surgePDA.toBuffer()],
+    program.programId,
+  )
 
   const PUMP_ACCOUNTS = {
     GLOBAL: "4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf",
@@ -42,6 +46,11 @@ describe("crowdfund", () => {
     EVENT_AUTHORITY: "Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1",
     PUMP_FUN: "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
   };
+  const historicalCosts = {
+    // taken arbitrarily from tx 4NEUh1RKWLnc4toXvDfetpZZqMe5tpSdx1ARC6jj7H8bGiEPwDGDigbz2EbuXJiQwH2otiuL8GvFD1uCBZdwyiWG
+    amountToken: new anchor.BN("451153567247"),
+    maxSolCost: new anchor.BN("20402000"),
+  }
   const IMPORTED_ACCOUNTS = {
     OGGY_MINT: "736a99zFBrmGxaZNoMyCD2s2cGWzn4Hv4xk6UJeypump",
   }
@@ -200,11 +209,21 @@ describe("crowdfund", () => {
       })
       .signers([ signer ])
       .rpc(); */
+
+      // manually fund the Vault PDA because there haven't been any fund calls
+    const vaultPdaAirdropSig = await provider.connection.requestAirdrop(vaultPda, 2 * LAMPORTS_PER_SOL)
+    const vaultPdaLatestBlockhash = await provider.connection.getLatestBlockhash();
+    await provider.connection.confirmTransaction({
+      blockhash: vaultPdaLatestBlockhash.blockhash,
+      lastValidBlockHeight: vaultPdaLatestBlockhash.lastValidBlockHeight,
+      signature: vaultPdaAirdropSig,
+    });
     console.log("Initialized with Howdy")
     const initialAdminBalance = await provider.connection.getBalance(signer.publicKey)
+    console.log({initialAdminBalance})
     //admin user tries to deploy funds and succeeds
     const tx = await program.methods
-      .deploy()
+      .deploy(historicalCosts.amountToken, historicalCosts.maxSolCost)
       .accounts({
         authority: signer.publicKey,
         pumpGlobal: PUMP_ACCOUNTS.GLOBAL,
@@ -214,6 +233,7 @@ describe("crowdfund", () => {
       })
       .signers([signer])
       .rpc()
+      .catch(async e => console.error(await e.getLogs()))
     // Get the transaction details using the signature
     await new Promise(resolve => setTimeout(resolve, 1000));
 
@@ -235,7 +255,7 @@ describe("crowdfund", () => {
     //one of the funders attempts to deploy funds and fails
     try {
       await program.methods
-        .deploy()
+        .deploy(historicalCosts.amountToken, historicalCosts.maxSolCost)
         .accounts({
           authority: funder1.publicKey,
           pumpGlobal: PUMP_ACCOUNTS.GLOBAL,
