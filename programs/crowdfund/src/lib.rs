@@ -158,8 +158,16 @@ pub mod crowdfund {
         //basically, only the "owner" of the funds could take advantage by passing in a different ata
 
         //Calculate amount of purchased SPL a user is entitled to
-        let claim_amount = (receipt.amount_deposited * surge.spl_amount) / surge.amount_deposited;
-        let sol_claim_amount = (receipt.amount_deposited * surge.leftover_sol) / surge.amount_deposited;
+        let receipt_amt_deposited_128 = u128::from(receipt.amount_deposited);
+        let surge_spl_amt_128 = u128::from(surge.spl_amount);
+        let surge_total_deposits_128 = u128::from(surge.amount_deposited);
+        let surge_leftover_128 = u128::from(surge.leftover_sol);
+
+        let claim_amount_128 = (receipt_amt_deposited_128 * surge_spl_amt_128) / surge_total_deposits_128;
+        let sol_claim_amount_128 = (receipt_amt_deposited_128 * surge_leftover_128) / surge_total_deposits_128;
+
+        let claim_amount = u64::try_from(claim_amount_128)?;
+        let sol_claim_amount = u64::try_from(sol_claim_amount_128)?;
         //determine entitlement based on claim
         let cpi_accounts = SplTransfer {
             from: surge_escrow_ata.to_account_info().clone(),
