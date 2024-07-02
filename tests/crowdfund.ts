@@ -233,11 +233,13 @@ describe("crowdfund", () => {
       })
       .signers([signer])
       .rpc()
-      .catch(async e => console.error(await e.getLogs()))
+      //.catch(async e => console.error(await e.getLogs()))
+
     // Get the transaction details using the signature
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     const transactionDetails = await provider.connection.getParsedTransaction(tx, "confirmed");
+    console.log({logs: transactionDetails.meta.logMessages})
 
     // Calculate the total transaction fee - seems like this is not actually required, even though in the end we check
     // the balance of the signer
