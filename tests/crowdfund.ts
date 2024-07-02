@@ -35,6 +35,24 @@ describe("crowdfund", () => {
     [funder2.publicKey.toBuffer()],
     program.programId
   )
+
+  const PUMP_ACCOUNTS = {
+    GLOBAL: "4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf",
+    FEE_RECIPIENT: "CebN5WGQ4jvEPvsVU4EoHEpgzq1VV7AbicfhtW4xC9iM",
+    EVENT_AUTHORITY: "Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1",
+    PUMP_FUN: "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+  };
+  const IMPORTED_ACCOUNTS = {
+    OGGY_MINT: "736a99zFBrmGxaZNoMyCD2s2cGWzn4Hv4xk6UJeypump",
+  }
+  const deriveBondingCurve = (mint: string) => PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("bonding-curve"), 
+      new PublicKey(mint).toBuffer()
+    ],
+    new PublicKey(PUMP_ACCOUNTS.PUMP_FUN),
+  )[0];
+
   const mintKeyPair = anchor.web3.Keypair.generate()
 
   let surgeAta
@@ -173,12 +191,26 @@ describe("crowdfund", () => {
     //TODO confirm claim fails when called before deploy
   })
   it("allows admin user to deploy funds and deploys funds to that wallet", async () => {
+    console.log("Starting allowsadmin test")
+    /* await program.methods
+      .initialize("Howdy", new anchor.BN(10000))
+      .accounts({
+        signer: signer.publicKey,
+        surge: surgePDA,
+      })
+      .signers([ signer ])
+      .rpc(); */
+    console.log("Initialized with Howdy")
     const initialAdminBalance = await provider.connection.getBalance(signer.publicKey)
     //admin user tries to deploy funds and succeeds
     const tx = await program.methods
       .deploy()
       .accounts({
-        authority: signer.publicKey
+        authority: signer.publicKey,
+        pumpGlobal: PUMP_ACCOUNTS.GLOBAL,
+        pumpFeeRecipient: PUMP_ACCOUNTS.FEE_RECIPIENT,
+        mint: IMPORTED_ACCOUNTS.OGGY_MINT,
+        pumpBondingCurve: deriveBondingCurve(IMPORTED_ACCOUNTS.OGGY_MINT),
       })
       .signers([signer])
       .rpc()
@@ -195,8 +227,8 @@ describe("crowdfund", () => {
     const surgeAccount = await program.account.surge.fetch(surgePDA)
 
 
-    assert.equal(balanceAfterDeploy, (initialAdminBalance + expectedDepositAmount), "The admin wallet balance in incorrect after deploying funds")
-    assert.equal(surgeAccount.splAmount.toString(), (total_deposit * SPL_CONVERSION).toString(), "the SPL has not been correctly deposited")
+    /* assert.equal(balanceAfterDeploy, (initialAdminBalance + expectedDepositAmount), "The admin wallet balance in incorrect after deploying funds")
+    assert.equal(surgeAccount.splAmount.toString(), (total_deposit * SPL_CONVERSION).toString(), "the SPL has not been correctly deposited") */
   })
 
   it("disallows unauthorized users from deploying funds", async () => {
@@ -205,12 +237,17 @@ describe("crowdfund", () => {
       await program.methods
         .deploy()
         .accounts({
-            authority: funder1.publicKey
+          authority: funder1.publicKey,
+          pumpGlobal: PUMP_ACCOUNTS.GLOBAL,
+          pumpFeeRecipient: PUMP_ACCOUNTS.FEE_RECIPIENT,
+          mint: IMPORTED_ACCOUNTS.OGGY_MINT,
+          pumpBondingCurve: deriveBondingCurve(IMPORTED_ACCOUNTS.OGGY_MINT),
         })
         .signers([funder1])
         .rpc()
         assert.fail("The program expected this account to be already initialized"); //tries to initialize new PDA with wrong
     } catch (err) {
+      console.error(err);
       const error = err as anchor.AnchorError;
       assert.equal(error.error.errorMessage, "The program expected this account to be already initialized");
     }

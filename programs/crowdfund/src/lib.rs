@@ -1,6 +1,8 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::system_instruction;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer as SplTransfer };
+use anchor_lang::solana_program::pubkey::Pubkey;
+use anchor_spl::{associated_token::AssociatedToken, token::{self, Token, TokenAccount, Transfer as SplTransfer }};
+use pump_fun::{BondingCurve, Global, program::Pump};
 
 declare_id!("85oFXf2BbhwsdwP4kbrdxhg5f9gBamehgiL8dFCDAAxg");
 
@@ -175,6 +177,39 @@ pub struct Deploy<'info> {
         has_one = authority //ensures that the authority field matches authority.publicKey
     )]
     pub surge: Account<'info, Surge>,
+    pub pump_global: Account<'info, Global>,
+    #[account(mut, /* address = CebN5WGQ4jvEPvsVU4EoHEpgzq1VV7AbicfhtW4xC9iM */)]
+    pub pump_fee_recipient: SystemAccount<'info>,
+    #[account()]
+    pub mint: Account<'info, anchor_spl::token::Mint>,
+    #[account(mut)]
+    pub pump_bonding_curve: Account<'info, BondingCurve>,
+    #[account(mut, seeds=[b"VAULT".as_ref(), surge.key().as_ref()], bump)]
+    pub pda_vault: SystemAccount<'info>,
+    #[account(
+      init,
+      payer = authority,
+      associated_token::mint = mint,
+      associated_token::authority = pda_vault,
+    )]
+    pub pda_vault_ata: Account<'info, TokenAccount>,
+    #[account(
+      mut,
+      associated_token::mint = mint,
+      associated_token::authority = pump_bonding_curve,
+    )]
+    pub pump_bonding_ata: Account<'info, TokenAccount>,
+    #[account()]
+    pub token_program: Program<'info, Token>,
+    #[account()]
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    #[account()]
+    pub rent: Sysvar<'info, Rent>,
+    /// CHECK: only used within pumpfun program
+    #[account( address= pubkey!("Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1"))]
+    pub pump_event_authority: UncheckedAccount<'info>,
+    #[account(address = pump_fun::ID)]
+    pub pump_program: Program<'info, Pump>,
     //pub mint: Account<'info, Mint>,
     //an escrow token account needs to be created here - this is where SPLs will be claimed to
     //it's owned by the Surge account, which is owned by the program - surge will need to be the authority
