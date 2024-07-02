@@ -73,7 +73,7 @@ pub mod crowdfund {
         // Update the SPL_amount field - hardcoded based on what is
         // deployed in "mint_to"
         //TODO use deploy amount to buy token, and update spl_amount based on purchased token
-        ctx.accounts.surge.spl_amount = 25_000;
+        ctx.accounts.surge.spl_amount = 45_000;
         //Stub out setting remaining solana amount after deploy
         ctx.accounts.surge.leftover_sol = deploy_amount; //in future this will be a lot less
         msg!("Admin deploying program");
@@ -235,6 +235,8 @@ pub struct Surge {
 
 #[error_code]
 pub enum ErrorCode {
+    #[msg("Account has already been initialized")]
+    AlreadyInitialized,
     #[msg("The signer is not the authority of this surge account.")]
     NotAuthority,
     #[msg("The signer has already claimed funds.")]
