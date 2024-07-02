@@ -103,7 +103,7 @@ describe("crowdfund", () => {
       // Airdrop SOL to the signer
       
     const tx = await program.methods
-      .initialize("TEST_NAME")
+      .initialize("TEST_NAME", new anchor.BN(5 * LAMPORTS_PER_SOL))
       .accounts({ 
         signer: signer.publicKey,
       })
@@ -164,6 +164,10 @@ describe("crowdfund", () => {
     //confirm surge amount
     const surgeAccount = await program.account.surge.fetch(surgePDA)
     assert.equal(surgeAccount.amountDeposited.toString(), new anchor.BN(total_deposit * LAMPORTS_PER_SOL).toString())
+  })
+  it("does not accept funds above threshold", async () => {
+    //TODO - confirm that when fund are above current threshold (5 sol)
+    //fund method fails
   })
   it("doesn't allow users to claim before funds are deployed", async () => {
     //TODO confirm claim fails when called before deploy
