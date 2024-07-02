@@ -52,25 +52,16 @@ pub mod crowdfund {
     }
 
     pub fn deploy(ctx: Context<Deploy>) -> Result<()> {
-        //When pulling "surge" from ctx.accounts.surge I was getting a conflict between
-        //mutable and imutable borrows
-
-        // Ensure only the admin can deploy funds
-        if ctx.accounts.surge.authority != *ctx.accounts.signer.key { //TODO: move to validation with has_one
-            return Err(ErrorCode::NotAuthority.into());
-        }
-
         // Calculate the creator fee and deploy amount
         let creator_fee = ctx.accounts.surge.amount_deposited * 5 / 100;
         let deploy_amount = ctx.accounts.surge.amount_deposited - creator_fee;
 
         // Perform the transfer
         let surge_info = ctx.accounts.surge.to_account_info();
-        let signer_info = ctx.accounts.signer.to_account_info();
+        let signer_info = ctx.accounts.authority.to_account_info();
 
         **surge_info.try_borrow_mut_lamports()? -= creator_fee;
         **signer_info.try_borrow_mut_lamports()? += creator_fee;
-
 
         // Update the SPL_amount field - hardcoded based on what is
         // deployed in "mint_to"
@@ -83,7 +74,7 @@ pub mod crowdfund {
     }
     pub fn claim(ctx: Context<Claim>) -> Result<()> {
         let surge = &mut ctx.accounts.surge;
-        let signer = &mut ctx.accounts.signer;
+        let signer = &mut ctx.accounts.owner;
         let receipt = &mut ctx.accounts.receipt;
         let surge_escrow_ata = &ctx.accounts.surge_escrow_ata;
         let user_ata = &ctx.accounts.signer_ata;
@@ -96,9 +87,6 @@ pub mod crowdfund {
         }
         //do I need to explicitly check that receipt is tied to the to_account somehow?
         //yeah probably - need someway to secure that when tokens are claimed, they can only be claimed to the entitled account
-        if receipt.owner != *signer.key { //TODO: make this an account constraint
-            return Err(ErrorCode::NotAuthorizedToClaim.into())
-        }
         if receipt.claimed {
             return Err(ErrorCode::AlreadyClaimed.into());
         }
@@ -172,11 +160,12 @@ pub struct Fund<'info> {
 #[derive(Accounts)]
 pub struct Deploy<'info> {
     #[account(mut)]
-    pub signer: Signer<'info>,
+    pub authority: Signer<'info>,
     #[account(
         mut,
-        seeds = [b"SURGE".as_ref(), signer.key().as_ref()], //ensures signer is linked to surge
-        bump
+        seeds = [b"SURGE".as_ref(), authority.key().as_ref()], //ensures signer is linked to surge
+        bump,
+        has_one = authority //ensures that the authority field matches authority.publicKey
     )]
     pub surge: Account<'info, Surge>,
     //pub mint: Account<'info, Mint>,
@@ -198,14 +187,17 @@ pub struct Deploy<'info> {
 #[derive(Accounts)]
 pub struct Claim<'info> {
     #[account(mut)]
-    pub signer: Signer<'info>,
+    pub owner: Signer<'info>,
     #[account(
         mut,
         seeds=[b"SURGE".as_ref(), surge.authority.as_ref()],
         bump=surge.bump
     )]
     pub surge: Account<'info, Surge>,
-    #[account(mut)]
+    #[account(
+        mut,
+        has_one = owner
+    )]
     pub receipt: Account<'info, Receipt>,
     #[account(mut)]
     pub surge_escrow_ata: Account<'info, TokenAccount>,

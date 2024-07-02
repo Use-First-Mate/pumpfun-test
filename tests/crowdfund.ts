@@ -133,7 +133,7 @@ describe("crowdfund", () => {
     //confirm that tx has succeeded
     //confirm recepit amount
     const funder1Receipt = await program.account.receipt.fetch(funder1ReceiptPDA)
-    assert.equal(funder1Receipt.lamports.toString(), new anchor.BN(funder1_deposit * LAMPORTS_PER_SOL).toString())
+    assert.equal(funder1Receipt.amountDeposited.toString(), new anchor.BN(funder1_deposit * LAMPORTS_PER_SOL).toString())
     //confirm surge amount
     const surgeAccount = await program.account.surge.fetch(surgePDA)
     assert.equal(surgeAccount.amountDeposited.toString(), new anchor.BN(funder1_deposit * LAMPORTS_PER_SOL).toString())
@@ -160,13 +160,13 @@ describe("crowdfund", () => {
 
 
     const funder2Receipt = await program.account.receipt.fetch(funder2ReceiptPDA)
-    assert.equal(funder2Receipt.lamports.toString(), new anchor.BN(funder2_deposit * LAMPORTS_PER_SOL).toString())
+    assert.equal(funder2Receipt.amountDeposited.toString(), new anchor.BN(funder2_deposit * LAMPORTS_PER_SOL).toString())
     //confirm surge amount
     const surgeAccount = await program.account.surge.fetch(surgePDA)
     assert.equal(surgeAccount.amountDeposited.toString(), new anchor.BN(total_deposit * LAMPORTS_PER_SOL).toString())
   })
   it("doesn't allow users to claim before funds are deployed", async () => {
-
+    //TODO confirm claim fails when called before deploy
   })
   it("allows admin user to deploy funds and deploys funds to that wallet", async () => {
     const initialAdminBalance = await provider.connection.getBalance(signer.publicKey)
@@ -174,7 +174,7 @@ describe("crowdfund", () => {
     const tx = await program.methods
       .deploy()
       .accounts({
-        signer: signer.publicKey
+        authority: signer.publicKey
       })
       .signers([signer])
       .rpc()
@@ -201,7 +201,7 @@ describe("crowdfund", () => {
       await program.methods
         .deploy()
         .accounts({
-            signer: funder1.publicKey
+            authority: funder1.publicKey
         })
         .signers([funder1])
         .rpc()
@@ -212,7 +212,7 @@ describe("crowdfund", () => {
     }
   })
   it("doesn't allow futher funding after initial deploy", async () => {
-
+    //todo confirm fund fails after deploy
   })
   it("allows signer to claim SPL and leftover SOL", async() => {
     let funder1Ata = await splToken.getOrCreateAssociatedTokenAccount(
@@ -225,7 +225,7 @@ describe("crowdfund", () => {
     await program.methods
       .claim()
       .accounts({
-        signer: funder1.publicKey,
+        owner: funder1.publicKey,
         surge: surgePDA,
         receipt: funder1ReceiptPDA,
         surgeEscrowAta: surgeAta.address,
@@ -253,7 +253,7 @@ describe("crowdfund", () => {
       await program.methods
       .claim()
       .accounts({
-        signer: funder1.publicKey,
+        owner: funder1.publicKey,
         surge: surgePDA,
         receipt: funder2ReceiptPDA,
         surgeEscrowAta: surgeAta.address,
@@ -264,7 +264,7 @@ describe("crowdfund", () => {
       assert.fail()
     } catch (err) {
       const error = err as anchor.AnchorError;
-      assert.equal(error.error.errorMessage, "Not authorized to claim.");
+      assert.equal(error.error.errorMessage, "A has one constraint was violated");
     }
 
   })
