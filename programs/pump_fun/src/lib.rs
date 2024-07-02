@@ -1,16 +1,3 @@
-use anchor_lang::prelude::*;
+anchor_gen::generate_cpi_crate!("pump-idl.json");
 
-declare_id!("7Ff787g7SPANts3km5dRKFDo8ytqJVHe5n8GQCdpV9Do");
-
-#[program]
-pub mod pump_fun {
-    use super::*;
-
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        msg!("Greetings from: {:?}", ctx.program_id);
-        Ok(())
-    }
-}
-
-#[derive(Accounts)]
-pub struct Initialize {}
+declare_id!("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P");
