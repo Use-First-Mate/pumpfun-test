@@ -35,6 +35,33 @@ describe("crowdfund", () => {
     [funder2.publicKey.toBuffer()],
     program.programId
   )
+  const [vaultPda, ] = PublicKey.findProgramAddressSync(
+    [Buffer.from("VAULT"), surgePDA.toBuffer()],
+    program.programId,
+  )
+
+  const PUMP_ACCOUNTS = {
+    GLOBAL: "4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf",
+    FEE_RECIPIENT: "CebN5WGQ4jvEPvsVU4EoHEpgzq1VV7AbicfhtW4xC9iM",
+    EVENT_AUTHORITY: "Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1",
+    PUMP_FUN: "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+  };
+  const historicalCosts = {
+    // taken arbitrarily from tx 4NEUh1RKWLnc4toXvDfetpZZqMe5tpSdx1ARC6jj7H8bGiEPwDGDigbz2EbuXJiQwH2otiuL8GvFD1uCBZdwyiWG
+    amountToken: new anchor.BN("451153567247"),
+    maxSolCost: new anchor.BN("20402000"),
+  }
+  const IMPORTED_ACCOUNTS = {
+    OGGY_MINT: "736a99zFBrmGxaZNoMyCD2s2cGWzn4Hv4xk6UJeypump",
+  }
+  const deriveBondingCurve = (mint: string) => PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("bonding-curve"), 
+      new PublicKey(mint).toBuffer()
+    ],
+    new PublicKey(PUMP_ACCOUNTS.PUMP_FUN),
+  )[0];
+
   const mintKeyPair = anchor.web3.Keypair.generate()
 
   let surgeAta
@@ -223,19 +250,46 @@ describe("crowdfund", () => {
     }
   })
   it("allows admin user to deploy funds and deploys funds to that wallet", async () => {
+    console.log("Starting allowsadmin test")
+    /* await program.methods
+      .initialize("Howdy", new anchor.BN(10000))
+      .accounts({
+        signer: signer.publicKey,
+        surge: surgePDA,
+      })
+      .signers([ signer ])
+      .rpc(); */
+
+      // manually fund the Vault PDA because there haven't been any fund calls
+    const vaultPdaAirdropSig = await provider.connection.requestAirdrop(vaultPda, 2 * LAMPORTS_PER_SOL)
+    const vaultPdaLatestBlockhash = await provider.connection.getLatestBlockhash();
+    await provider.connection.confirmTransaction({
+      blockhash: vaultPdaLatestBlockhash.blockhash,
+      lastValidBlockHeight: vaultPdaLatestBlockhash.lastValidBlockHeight,
+      signature: vaultPdaAirdropSig,
+    });
+    console.log("Initialized with Howdy")
     const initialAdminBalance = await provider.connection.getBalance(signer.publicKey)
+    console.log({initialAdminBalance})
     //admin user tries to deploy funds and succeeds
     const tx = await program.methods
-      .deploy()
+      .deploy(historicalCosts.amountToken, historicalCosts.maxSolCost)
       .accounts({
-        authority: signer.publicKey
+        authority: signer.publicKey,
+        pumpGlobal: PUMP_ACCOUNTS.GLOBAL,
+        pumpFeeRecipient: PUMP_ACCOUNTS.FEE_RECIPIENT,
+        mint: IMPORTED_ACCOUNTS.OGGY_MINT,
+        pumpBondingCurve: deriveBondingCurve(IMPORTED_ACCOUNTS.OGGY_MINT),
       })
       .signers([signer])
       .rpc()
+      //.catch(async e => console.error(await e.getLogs()))
+
     // Get the transaction details using the signature
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     const transactionDetails = await provider.connection.getParsedTransaction(tx, "confirmed");
+    console.log({logs: transactionDetails.meta.logMessages})
 
     // Calculate the total transaction fee - seems like this is not actually required, even though in the end we check
     // the balance of the signer
@@ -248,21 +302,28 @@ describe("crowdfund", () => {
     assert.equal(balanceAfterDeploy, (initialAdminBalance + expectedDepositAmount), "The admin wallet balance in incorrect after deploying funds")
     //TODO - testing needs to happen here to actually test the SPL amount
     //This is dependent on a hardcoded value
+    //expect this to fail now that hardcoded value has been replaced
     assert.equal(surgeAccount.splAmount.toString(), (total_deposit * SPL_CONVERSION).toString(), "the SPL has not been correctly deposited")
+
   })
 
   it("disallows unauthorized users from deploying funds", async () => {
     //one of the funders attempts to deploy funds and fails
     try {
       await program.methods
-        .deploy()
+        .deploy(historicalCosts.amountToken, historicalCosts.maxSolCost)
         .accounts({
-            authority: funder1.publicKey
+          authority: funder1.publicKey,
+          pumpGlobal: PUMP_ACCOUNTS.GLOBAL,
+          pumpFeeRecipient: PUMP_ACCOUNTS.FEE_RECIPIENT,
+          mint: IMPORTED_ACCOUNTS.OGGY_MINT,
+          pumpBondingCurve: deriveBondingCurve(IMPORTED_ACCOUNTS.OGGY_MINT),
         })
         .signers([funder1])
         .rpc()
         assert.fail("The program expected this account to be already initialized"); //tries to initialize new PDA with wrong
     } catch (err) {
+      console.error(err);
       const error = err as anchor.AnchorError;
       assert.equal(error.error.errorMessage, "The program expected this account to be already initialized");
     }
