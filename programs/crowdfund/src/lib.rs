@@ -12,9 +12,16 @@ pub mod crowdfund {
     use anchor_lang::system_program::Transfer;
 
     use super::*;
-
-    pub fn initialize(ctx: Context<Initialize>, name: String, threshold: u64) -> Result<()> {
+    pub fn initialize_surge_counter(ctx: Context<InitializeSurgeCounter>) -> Result<()> {
+        let surge_counter = & mut ctx.accounts.surge_counter;
+        surge_counter.next_surge_id = 1;
+        Ok(())
+    }
+    pub fn initialize_surge(ctx: Context<InitializeSurge>, name: String, threshold: u64) -> Result<()> {
         let surge = &mut ctx.accounts.surge;
+        let surge_counter = & mut ctx.accounts.surge_counter;
+        surge.id = surge_counter.next_surge_id;
+        surge_counter.next_surge_id += 1;
         surge.name = name;
         surge.amount_deposited = 0;
         surge.authority = *ctx.accounts.signer.key; //equals data, not reference (I think)
@@ -63,7 +70,7 @@ pub mod crowdfund {
     pub fn deploy(ctx: Context<Deploy>, amount_token: u64, max_sol_cost: u64,) -> Result<()> {
         // Calculate the creator fee and deploy amount
         let creator_fee = ctx.accounts.surge.amount_deposited * 5 / 100;
-        let deploy_amount = ctx.accounts.surge.amount_deposited - creator_fee;
+        let _deploy_amount = ctx.accounts.surge.amount_deposited - creator_fee;
 
         let vault_sol_before = ctx.accounts.pda_vault.lamports();
         let vault_token_before = ctx.accounts.pda_vault_ata.amount;
@@ -202,12 +209,31 @@ pub mod crowdfund {
 }
 
 #[derive(Accounts)]
-pub struct Initialize<'info> {
+pub struct InitializeSurgeCounter<'info> {
+#[account(
+    init,
+    payer=signer,
+    space= 8 + 64,
+    seeds=[b"SURGE_COUNTER",
+            signer.key().as_ref()
+    ], bump)]
+    pub surge_counter: Account<'info, SurgeCounter>,
+    #[account(mut)]
+    pub signer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+#[derive(Accounts)]
+pub struct InitializeSurge<'info> {
+    #[account(mut, 
+        seeds=[b"SURGE_COUNTER", 
+        signer.key().as_ref()
+    ], bump)]
+    pub surge_counter: Account<'info, SurgeCounter>,
     #[account(
         init,
         payer = signer,
         space = 500,
-        seeds= [b"SURGE".as_ref(), signer.key().as_ref()], //kind of wonder if this should be unique - i.e. just surge
+        seeds= [b"SURGE".as_ref(), signer.key().as_ref(), &surge_counter.next_surge_id.to_le_bytes()], //kind of wonder if this should be unique - i.e. just surge
         bump
     )]
     pub surge: Account<'info, Surge>,
@@ -222,13 +248,17 @@ pub struct Fund<'info> {
         init,
         payer = signer,
         space = 8 + 8 + 200,
-        seeds = [signer.key().as_ref()], //if we do multiple surge's per contract the surge should have a receipt
+        seeds = [signer.key().as_ref(), &surge.id.to_le_bytes()], //if we do multiple surge's per contract the surge should have a receipt
         bump
     )]
     pub receipt: Account<'info, Receipt>,
     #[account(mut)]
     pub signer: Signer<'info>,
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds=[b"SURGE".as_ref(), surge.authority.as_ref(), &surge.id.to_le_bytes()],
+        bump=surge.bump
+    )]
     pub surge: Account<'info, Surge>,
     #[account(
       mut,
@@ -245,7 +275,7 @@ pub struct Deploy<'info> {
     pub authority: Signer<'info>,
     #[account(
         mut,
-        seeds = [b"SURGE".as_ref(), authority.key().as_ref()], //ensures signer is linked to surge
+        seeds = [b"SURGE".as_ref(), authority.key().as_ref(), &surge.id.to_le_bytes()], //ensures signer is linked to surge
         bump,
         has_one = authority //ensures that the authority field matches authority.publicKey
     )]
@@ -292,7 +322,7 @@ pub struct Claim<'info> {
     pub owner: Signer<'info>,
     #[account(
         mut,
-        seeds=[b"SURGE".as_ref(), surge.authority.as_ref()],
+        seeds=[b"SURGE".as_ref(), surge.authority.as_ref(), &surge.id.to_le_bytes()],
         bump=surge.bump
     )]
     pub surge: Account<'info, Surge>,
@@ -306,7 +336,9 @@ pub struct Claim<'info> {
     pub pda_vault_ata: Account<'info, TokenAccount>,
     #[account(
         mut,
-        has_one = owner
+        has_one = owner,
+        seeds = [owner.key().as_ref(), &surge.id.to_le_bytes()],
+        bump,
     )]
     pub receipt: Account<'info, Receipt>,
     #[account(
@@ -319,7 +351,10 @@ pub struct Claim<'info> {
     pub system_program: Program<'info, System>,
 
 }
-
+#[account]
+pub struct SurgeCounter {
+    pub next_surge_id: u64
+}
 #[account]
 pub struct Receipt {
     amount_deposited: u64,
@@ -329,6 +364,7 @@ pub struct Receipt {
 }
 #[account]
 pub struct Surge {
+    pub id: u64,
     pub authority: Pubkey,
     pub name: String,
     pub amount_deposited: u64,
