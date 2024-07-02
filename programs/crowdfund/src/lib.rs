@@ -149,16 +149,10 @@ pub mod crowdfund {
         if surge.spl_amount <= 0 {
             return Err(ErrorCode::ClaimNotOpen.into())
         }
-        //do I need to explicitly check that receipt is tied to the to_account somehow?
-        //yeah probably - need someway to secure that when tokens are claimed, they can only be claimed to the entitled account
+
         if receipt.claimed {
             return Err(ErrorCode::AlreadyClaimed.into());
         }
-
-        //Do I additionally need to confirm that the user_ata is linked to the signer
-        //i.e. is it currently an attack vector that anyone could pass in any user_ata
-        //right now, given that the person who triggers via signing has to have their pubkey on the receipt it's fine
-        //basically, only the "owner" of the funds could take advantage by passing in a different ata
 
         //Calculate amount of purchased SPL a user is entitled to
         let receipt_amt_deposited_128 = u128::from(receipt.amount_deposited);
