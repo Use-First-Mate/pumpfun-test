@@ -256,7 +256,7 @@ pub struct Fund<'info> {
         init,
         payer = signer,
         space = 8 + 8 + 200,
-        seeds = [signer.key().as_ref()], //if we do multiple surge's per contract the surge should have a receipt
+        seeds = [signer.key().as_ref(), &surge.id.to_le_bytes()], //if we do multiple surge's per contract the surge should have a receipt
         bump
     )]
     pub receipt: Account<'info, Receipt>,
@@ -351,7 +351,9 @@ pub struct Claim<'info> {
     pub pda_vault_ata: Account<'info, TokenAccount>,
     #[account(
         mut,
-        has_one = owner
+        has_one = owner,
+        seeds = [owner.key().as_ref(), &surge.id.to_le_bytes()],
+        bump,
     )]
     pub receipt: Account<'info, Receipt>,
     #[account(mut)]

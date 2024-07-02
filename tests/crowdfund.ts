@@ -31,11 +31,11 @@ describe("crowdfund", () => {
     program.programId
   )
   const [funder1ReceiptPDA, funder1bump] = PublicKey.findProgramAddressSync(
-    [funder1.publicKey.toBuffer()],
+    [funder1.publicKey.toBuffer(), new anchor.BN(1).toArrayLike(Buffer, "le", 8)],
     program.programId
   )
   const [funder2ReceiptPDA, funder2bump] = PublicKey.findProgramAddressSync(
-    [funder2.publicKey.toBuffer()],
+    [funder2.publicKey.toBuffer(), new anchor.BN(1).toArrayLike(Buffer, "le", 8)],
     program.programId
   )
   const [vaultPda, ] = PublicKey.findProgramAddressSync(
@@ -412,7 +412,7 @@ describe("crowdfund", () => {
       assert.fail()
     } catch (err) {
       const error = err as anchor.AnchorError;
-      assert.equal(error.error.errorMessage, "A has one constraint was violated");
+      assert.equal(error.error.errorMessage, "A seeds constraint was violated");
     }
 
   })
