@@ -339,9 +339,6 @@ describe("crowdfund", () => {
         assert.fail("The program expected this account to be already initialized"); //tries to initialize new PDA with wrong
     } catch (err) {
       //TODO figure out how to flag specific error message
-      console.log("ERROR LGOS")
-      const logs = await err.getLogs()
-      console.log(logs)
       assert.isTrue(!!err)
       // const error = err as anchor.AnchorError;
       // assert.equal(error.error.errorMessage, "The program expected this account to be already initialized");
