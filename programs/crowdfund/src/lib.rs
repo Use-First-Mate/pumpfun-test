@@ -9,12 +9,13 @@ pub mod crowdfund {
 
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>, name: String) -> Result<()> {
+    pub fn initialize(ctx: Context<Initialize>, name: String, threshold: u64) -> Result<()> {
         let surge = &mut ctx.accounts.surge;
         surge.name = name;
         surge.amount_deposited = 0;
         surge.authority = *ctx.accounts.signer.key; //equals data, not reference (I think)
         surge.bump = ctx.bumps.surge;
+        surge.threshold = threshold; 
         Ok(())
     }
 
@@ -22,6 +23,12 @@ pub mod crowdfund {
         let from_account = &ctx.accounts.signer;
         let to_account = &ctx.accounts.surge;
         if to_account.spl_amount > 0 {
+            return Err(ErrorCode::DepositsClosed.into())
+        }
+        //if surge is already above threshold - then stop
+        //I wonder if there's an issue here if threshold is
+        //
+        if to_account.amount_deposited > to_account.threshold {
             return Err(ErrorCode::DepositsClosed.into())
         }
         //add explicit check that .claimed is false and not true
@@ -219,6 +226,7 @@ pub struct Surge {
     pub authority: Pubkey,
     pub name: String,
     pub amount_deposited: u64,
+    pub threshold: u64,
     pub spl_amount: u64,
     pub spl_address: Pubkey,
     pub leftover_sol: u64,
