@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::system_instruction;
 use anchor_lang::solana_program::pubkey::Pubkey;
-use anchor_spl::{associated_token::AssociatedToken, token::{self, Mint, Token, TokenAccount, Transfer as SplTransfer }};
+use anchor_spl::{associated_token::AssociatedToken, token::{self, Token, TokenAccount, Transfer as SplTransfer }};
 use pump_fun::{BondingCurve, Global, program::Pump};
 use pump_fun::cpi::accounts::Buy;
 
@@ -66,7 +66,7 @@ pub mod crowdfund {
     pub fn deploy(ctx: Context<Deploy>, amount_token: u64, max_sol_cost: u64,) -> Result<()> {
         // Calculate the creator fee and deploy amount
         let creator_fee = ctx.accounts.surge.amount_deposited * 5 / 100;
-        let deploy_amount = ctx.accounts.surge.amount_deposited - creator_fee;
+        let _deploy_amount = ctx.accounts.surge.amount_deposited - creator_fee;
 
         let vault_sol_before = ctx.accounts.pda_vault.lamports();
         let vault_token_before = ctx.accounts.pda_vault_ata.amount;
@@ -138,13 +138,9 @@ pub mod crowdfund {
     pub fn claim(ctx: Context<Claim>) -> Result<()> {
         let surge_key = ctx.accounts.surge.key();
         let surge = &mut ctx.accounts.surge;
-        let signer = &mut ctx.accounts.owner;
         let receipt = &mut ctx.accounts.receipt;
-        let surge_escrow_ata = &ctx.accounts.surge_escrow_ata;
         let user_ata = &ctx.accounts.signer_ata;
         let token_program = &ctx.accounts.token_program;
-        let surge_info = surge.to_account_info();
-        let signer_info = signer.to_account_info();
 
         let pda_vault_signer: &[&[u8]] = &[
           b"VAULT",
