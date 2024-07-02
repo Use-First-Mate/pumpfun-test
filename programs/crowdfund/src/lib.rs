@@ -80,7 +80,6 @@ pub mod crowdfund {
         let cpi_accounts = Buy {
           user: ctx.accounts.pda_vault.to_account_info(),
           associated_user: ctx.accounts.pda_vault_ata.to_account_info(),
-
           program: ctx.accounts.pump_program.to_account_info(),
 
           global: ctx.accounts.pump_global.to_account_info(),
@@ -322,6 +321,8 @@ pub struct Surge {
 
 #[error_code]
 pub enum ErrorCode {
+    #[msg("Account has already been initialized")]
+    AlreadyInitialized,
     #[msg("The signer is not the authority of this surge account.")]
     NotAuthority,
     #[msg("The signer has already claimed funds.")]

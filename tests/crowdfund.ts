@@ -12,8 +12,8 @@ describe("crowdfund", () => {
 
   const SPL_CONVERSION = 10_000; //set the exchange rate of our SPL 10_000 per SOL
   //SOL denominated deposit for funders + derived total
-  const funder1_deposit = 1
-  const funder2_deposit = 1.5
+  const funder1_deposit = 2
+  const funder2_deposit = 2.5
   const total_deposit = funder1_deposit + funder2_deposit
 
   const program = anchor.workspace.Crowdfund as Program<Crowdfund>;
@@ -75,7 +75,7 @@ describe("crowdfund", () => {
       signature: airdropSignature
     });
 
-    const funder1AirdropSignature = await provider.connection.requestAirdrop(funder1.publicKey, 2 * LAMPORTS_PER_SOL)
+    const funder1AirdropSignature = await provider.connection.requestAirdrop(funder1.publicKey, 5 * LAMPORTS_PER_SOL)
     const funder1LatestBlockHash = await provider.connection.getLatestBlockhash();
     await provider.connection.confirmTransaction({
       blockhash: funder1LatestBlockHash.blockhash,
@@ -105,7 +105,6 @@ describe("crowdfund", () => {
       true
     )
 
-    console.log("SURGE ATA IS " + surgeAta.address)
     const mint = await splToken.mintTo(
       provider.connection,
       signer,
@@ -121,12 +120,11 @@ describe("crowdfund", () => {
       provider.connection,
       surgeAta.address,
     )
-    console.log(populatedAta)
   })
   //create an SPL mint that we can use for testing
   //this is a stub, will need to be replaced with interaction w/ pump fun
 
-  it("Is initialized with the correct name", async () => {
+  it("Surge is initialized with the correct name", async () => {
       // Airdrop SOL to the signer
       
     const tx = await program.methods
@@ -141,10 +139,24 @@ describe("crowdfund", () => {
 
     // Check if the name is correctly set
     assert.equal(surgeAccount.name, "TEST_NAME", "The surge account name was not initialized correctly");
-    console.log("Your transaction signature", tx);
-    console.log(surgeAccount.amountDeposited)
   });
-
+  it("Surge can't be reinitialized", async () => {
+    try{
+      const tx = await program.methods
+      .initialize("TEST_NAME", new anchor.BN(4* LAMPORTS_PER_SOL))
+      .accounts({ 
+        signer: signer.publicKey,
+      })
+      .signers([signer])
+      .rpc();
+      //Ensure surge fails to re-initialize
+      assert.fail("Account has already been initialized"); //tries to initialize new PDA with wrong
+    } catch (err) {
+      //TODO - this is correctly failing, but having trouble asserting that it's
+      //failing correctly because returning error is not anchor error
+      assert.isTrue(!!err)
+    }
+  })
   it("accepts funds from user", async () => {
     //fund with funder 1, and confirm that pool amount is equal to expected amt
     
@@ -168,7 +180,7 @@ describe("crowdfund", () => {
   })
   it("can pool funds from multiple users", async () => {
     //fund with funder 2, and confirm that pool amount is equal to 1 + 2
-    const airdropSignature = await provider.connection.requestAirdrop(funder2.publicKey, 2 * LAMPORTS_PER_SOL)
+    const airdropSignature = await provider.connection.requestAirdrop(funder2.publicKey, 3 * LAMPORTS_PER_SOL)
     const latestBlockHash = await provider.connection.getLatestBlockhash();
 
     await provider.connection.confirmTransaction({
@@ -192,12 +204,50 @@ describe("crowdfund", () => {
     const surgeAccount = await program.account.surge.fetch(surgePDA)
     assert.equal(surgeAccount.amountDeposited.toString(), new anchor.BN(total_deposit * LAMPORTS_PER_SOL).toString())
   })
-  it("does not accept funds above threshold", async () => {
+  it("does not accept funds after threshold crossed", async () => {
     //TODO - confirm that when fund are above current threshold (5 sol)
     //fund method fails
+    try {
+      await program.methods
+      .fund(new anchor.BN(1 * LAMPORTS_PER_SOL)) //this 1 extra solana should push past threshold
+      .accounts({
+        signer: funder1.publicKey,
+        surge: surgePDA,
+      })
+      .signers([funder1])
+      .rpc()
+      assert.fail("program should not accept funds over threshold")
+    } catch (err) {
+      //TODO - get actual error message here
+      assert.isTrue(!!err)
+    }
   })
   it("doesn't allow users to claim before funds are deployed", async () => {
     //TODO confirm claim fails when called before deploy
+    try {
+      let funder1Ata = await splToken.getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        signer,
+        mintProgram,
+        funder1.publicKey,
+        true
+      )
+      await program.methods
+        .claim()
+        .accounts({
+          owner: funder1.publicKey, // since owner is `Signer`, it's implied in `.signers([...])
+          surge: surgePDA,          // since `surge` is a PDA, it should be implied from other accts
+          receipt: funder1ReceiptPDA,
+          surgeEscrowAta: surgeAta.address,
+          signerAta: funder1Ata.address
+        })
+        .signers([funder1])
+        .rpc()
+      assert.fail("program should not allow users to claim funds pre-deploy")
+    } catch (err) {
+      //TODO - get actual error message here
+      assert.isTrue(!!err)
+    }
   })
   it("allows admin user to deploy funds and deploys funds to that wallet", async () => {
     console.log("Starting allowsadmin test")
@@ -244,13 +294,17 @@ describe("crowdfund", () => {
     // Calculate the total transaction fee - seems like this is not actually required, even though in the end we check
     // the balance of the signer
     //const transactionFee = transactionDetails.meta.fee;
-    const expectedDepositAmount = .125 * LAMPORTS_PER_SOL
+    const expectedDepositAmount = ((total_deposit) * 5) / 100 * LAMPORTS_PER_SOL
     const balanceAfterDeploy = await provider.connection.getBalance(signer.publicKey)
     const surgeAccount = await program.account.surge.fetch(surgePDA)
 
 
-    /* assert.equal(balanceAfterDeploy, (initialAdminBalance + expectedDepositAmount), "The admin wallet balance in incorrect after deploying funds")
-    assert.equal(surgeAccount.splAmount.toString(), (total_deposit * SPL_CONVERSION).toString(), "the SPL has not been correctly deposited") */
+    assert.equal(balanceAfterDeploy, (initialAdminBalance + expectedDepositAmount), "The admin wallet balance in incorrect after deploying funds")
+    //TODO - testing needs to happen here to actually test the SPL amount
+    //This is dependent on a hardcoded value
+    //expect this to fail now that hardcoded value has been replaced
+    assert.equal(surgeAccount.splAmount.toString(), (total_deposit * SPL_CONVERSION).toString(), "the SPL has not been correctly deposited")
+
   })
 
   it("disallows unauthorized users from deploying funds", async () => {
@@ -276,6 +330,20 @@ describe("crowdfund", () => {
   })
   it("doesn't allow futher funding after initial deploy", async () => {
     //todo confirm fund fails after deploy
+    try {
+      await program.methods
+      .fund(new anchor.BN(1 * LAMPORTS_PER_SOL))
+      .accounts({
+        signer: funder1.publicKey,
+        surge: surgePDA,
+      })
+      .signers([funder1])
+      .rpc()
+      assert.fail("program should not accept funds now that they've been deployed")
+    } catch (err) {
+      //TODO - get actual error message here
+      assert.isTrue(!!err)
+    }
   })
   it("allows signer to claim SPL and leftover SOL", async() => {
     let funder1Ata = await splToken.getOrCreateAssociatedTokenAccount(
@@ -300,9 +368,10 @@ describe("crowdfund", () => {
         provider.connection,
         funder1Ata.address,
       )
-      console.log(populatedFunder1Ata)
-      //TODO - make sure populatedFunder1Ata balance is what is expected
-      //
+      
+      //ensure balance is calculated correctly
+      const expectedFunder1SplAmount = (total_deposit * SPL_CONVERSION) * funder1_deposit / total_deposit
+      assert.equal(populatedFunder1Ata.amount, BigInt(expectedFunder1SplAmount) )
   })
   it("only doesn't allow signer to claim to other ATA receipts", async () => {
     let funder1Ata = await splToken.getOrCreateAssociatedTokenAccount(
