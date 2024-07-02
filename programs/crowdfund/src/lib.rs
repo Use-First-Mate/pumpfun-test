@@ -43,7 +43,6 @@ pub mod crowdfund {
         if to_account.amount_deposited > to_account.threshold {
             return Err(ErrorCode::DepositsClosed.into())
         }
-        //add explicit check that .claimed is false and not true
         let transfer_instruction = system_instruction::transfer(
             &from_account.key(), 
             &to_account.key(), amount
@@ -253,7 +252,7 @@ pub struct InitializeSurge<'info> {
 #[derive(Accounts)]
 pub struct Fund<'info> {
     #[account(
-        init,
+        init_if_needed,
         payer = signer,
         space = 8 + 8 + 200,
         seeds = [signer.key().as_ref(), &surge.id.to_le_bytes()], //if we do multiple surge's per contract the surge should have a receipt
