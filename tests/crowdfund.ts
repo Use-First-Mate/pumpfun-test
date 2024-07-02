@@ -225,8 +225,8 @@ describe("crowdfund", () => {
     await program.methods
       .claim()
       .accounts({
-        owner: funder1.publicKey,
-        surge: surgePDA,
+        owner: funder1.publicKey, // since owner is `Signer`, it's implied in `.signers([...])
+        surge: surgePDA,          // since `surge` is a PDA, it should be implied from other accts
         receipt: funder1ReceiptPDA,
         surgeEscrowAta: surgeAta.address,
         signerAta: funder1Ata.address
