@@ -1,6 +1,9 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::system_instruction;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer as SplTransfer };
+use anchor_lang::solana_program::pubkey::Pubkey;
+use anchor_spl::{associated_token::AssociatedToken, token::{self, Token, TokenAccount, Transfer as SplTransfer }};
+use pump_fun::{BondingCurve, Global, program::Pump};
+use pump_fun::cpi::accounts::Buy;
 
 declare_id!("85oFXf2BbhwsdwP4kbrdxhg5f9gBamehgiL8dFCDAAxg");
 
@@ -58,25 +61,76 @@ pub mod crowdfund {
         Ok(())
     }
 
-    pub fn deploy(ctx: Context<Deploy>) -> Result<()> {
+    pub fn deploy(ctx: Context<Deploy>, amount_token: u64, max_sol_cost: u64,) -> Result<()> {
         // Calculate the creator fee and deploy amount
         let creator_fee = ctx.accounts.surge.amount_deposited * 5 / 100;
         let deploy_amount = ctx.accounts.surge.amount_deposited - creator_fee;
 
-        // Perform the transfer
-        let surge_info = ctx.accounts.surge.to_account_info();
-        let signer_info = ctx.accounts.authority.to_account_info();
+        let vault_sol_before = ctx.accounts.pda_vault.lamports();
+        let vault_token_before = ctx.accounts.pda_vault_ata.amount;
+        msg!("vault sol {} ; vault token {}", vault_sol_before, vault_token_before);
+        let surge_key = ctx.accounts.surge.key();
+        let vault_pda_signer: &[&[u8]] = &[
+          b"VAULT",
+          surge_key.as_ref(),
+          &[ctx.bumps.pda_vault],
+        ];
+        let all_signers = &[vault_pda_signer];
 
-        **surge_info.try_borrow_mut_lamports()? -= creator_fee;
-        **signer_info.try_borrow_mut_lamports()? += creator_fee;
+        let cpi_accounts = Buy {
+          user: ctx.accounts.pda_vault.to_account_info(),
+          associated_user: ctx.accounts.pda_vault_ata.to_account_info(),
 
-        // Update the SPL_amount field - hardcoded based on what is
-        // deployed in "mint_to"
-        //TODO use deploy amount to buy token, and update spl_amount based on purchased token
-        ctx.accounts.surge.spl_amount = 25_000;
-        //Stub out setting remaining solana amount after deploy
-        ctx.accounts.surge.leftover_sol = deploy_amount; //in future this will be a lot less
-        msg!("Admin deploying program");
+          program: ctx.accounts.pump_program.to_account_info(),
+
+          global: ctx.accounts.pump_global.to_account_info(),
+          fee_recipient: ctx.accounts.pump_fee_recipient.to_account_info(),
+          mint: ctx.accounts.mint.to_account_info(),
+          bonding_curve: ctx.accounts.pump_bonding_curve.to_account_info(),
+          associated_bonding_curve: ctx.accounts.pump_bonding_ata.to_account_info(),
+          system_program: ctx.accounts.system_program.to_account_info(),
+          token_program: ctx.accounts.token_program.to_account_info(),
+          rent: ctx.accounts.rent.to_account_info(),
+          event_authority: ctx.accounts.pump_event_authority.to_account_info(),
+        };
+
+        let cpi_context = CpiContext::new_with_signer(
+          ctx.accounts.pump_program.to_account_info(), 
+          cpi_accounts, 
+          all_signers,
+        );
+        msg!("about to call out");
+        pump_fun::cpi::buy(
+          cpi_context, 
+          amount_token, 
+          max_sol_cost,
+        )?;
+
+        msg!(
+          "just called out. pda vault bal pre reload {}", 
+          ctx.accounts.pda_vault_ata.amount
+        );
+
+        // Check balances after
+        ctx.accounts.pda_vault_ata.reload()?;
+
+        let vault_sol_after = ctx.accounts.pda_vault.lamports();
+        let vault_token_after = ctx.accounts.pda_vault_ata.amount;
+
+        msg!(
+          "Sol: {} before, {} after. Token: {} before, {} after. Params: {} token, {} sol",
+          vault_sol_before,
+          vault_sol_after,
+          vault_token_before,
+          vault_token_after,
+          amount_token,
+          max_sol_cost,
+        );
+
+        ctx.accounts.surge.spl_amount = vault_token_after;
+        ctx.accounts.surge.leftover_sol = vault_sol_after;
+
+        // TODO write the mint address into Surge for claims
         Ok(())
     }
     pub fn claim(ctx: Context<Claim>) -> Result<()> {
@@ -175,6 +229,39 @@ pub struct Deploy<'info> {
         has_one = authority //ensures that the authority field matches authority.publicKey
     )]
     pub surge: Account<'info, Surge>,
+    pub pump_global: Account<'info, Global>,
+    #[account(mut, /* address = CebN5WGQ4jvEPvsVU4EoHEpgzq1VV7AbicfhtW4xC9iM */)]
+    pub pump_fee_recipient: SystemAccount<'info>,
+    #[account()]
+    pub mint: Account<'info, anchor_spl::token::Mint>,
+    #[account(mut)]
+    pub pump_bonding_curve: Account<'info, BondingCurve>,
+    #[account(mut, seeds=[b"VAULT".as_ref(), surge.key().as_ref()], bump)]
+    pub pda_vault: SystemAccount<'info>,
+    #[account(
+      init,
+      payer = authority,
+      associated_token::mint = mint,
+      associated_token::authority = pda_vault,
+    )]
+    pub pda_vault_ata: Account<'info, TokenAccount>,
+    #[account(
+      mut,
+      associated_token::mint = mint,
+      associated_token::authority = pump_bonding_curve,
+    )]
+    pub pump_bonding_ata: Account<'info, TokenAccount>,
+    #[account()]
+    pub token_program: Program<'info, Token>,
+    #[account()]
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    #[account()]
+    pub rent: Sysvar<'info, Rent>,
+    /// CHECK: only used within pumpfun program
+    #[account( address= pubkey!("Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1"))]
+    pub pump_event_authority: UncheckedAccount<'info>,
+    #[account(address = pump_fun::ID)]
+    pub pump_program: Program<'info, Pump>,
     //pub mint: Account<'info, Mint>,
     //an escrow token account needs to be created here - this is where SPLs will be claimed to
     //it's owned by the Surge account, which is owned by the program - surge will need to be the authority
@@ -228,7 +315,7 @@ pub struct Surge {
     pub amount_deposited: u64,
     pub threshold: u64,
     pub spl_amount: u64,
-    pub spl_address: Pubkey,
+    pub spl_address: Pubkey, // todo make this Account<'info, Mint>
     pub leftover_sol: u64,
     pub bump: u8,
 }
