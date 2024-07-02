@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::system_instruction;
 use anchor_lang::solana_program::pubkey::Pubkey;
-use anchor_spl::{associated_token::AssociatedToken, token::{self, Token, TokenAccount, Transfer as SplTransfer }};
+use anchor_spl::{associated_token::AssociatedToken, token::{self, Mint, Token, TokenAccount, Transfer as SplTransfer }};
 use pump_fun::{BondingCurve, Global, program::Pump};
 use pump_fun::cpi::accounts::Buy;
 
@@ -129,11 +129,13 @@ pub mod crowdfund {
 
         ctx.accounts.surge.spl_amount = vault_token_after;
         ctx.accounts.surge.leftover_sol = vault_sol_after;
+        ctx.accounts.surge.mint = ctx.accounts.mint.key();
 
         // TODO write the mint address into Surge for claims
         Ok(())
     }
     pub fn claim(ctx: Context<Claim>) -> Result<()> {
+        let surge_key = ctx.accounts.surge.key();
         let surge = &mut ctx.accounts.surge;
         let signer = &mut ctx.accounts.owner;
         let receipt = &mut ctx.accounts.receipt;
@@ -142,6 +144,12 @@ pub mod crowdfund {
         let token_program = &ctx.accounts.token_program;
         let surge_info = surge.to_account_info();
         let signer_info = signer.to_account_info();
+
+        let pda_vault_signer: &[&[u8]] = &[
+          b"VAULT",
+          surge_key.as_ref(),
+          &[ctx.bumps.pda_vault]
+        ];
         
         if surge.spl_amount <= 0 {
             return Err(ErrorCode::ClaimNotOpen.into())
@@ -170,9 +178,9 @@ pub mod crowdfund {
         let sol_claim_amount = u64::try_from(sol_claim_amount_128)?;
         //determine entitlement based on claim
         let cpi_accounts = SplTransfer {
-            from: surge_escrow_ata.to_account_info().clone(),
+            from: ctx.accounts.pda_vault_ata.to_account_info(),
             to: user_ata.to_account_info().clone(),
-            authority: surge.to_account_info().clone(),
+            authority: ctx.accounts.pda_vault.to_account_info().clone(),
         };
 
         let cpi_program = token_program.to_account_info();
@@ -181,7 +189,8 @@ pub mod crowdfund {
             CpiContext::new_with_signer(
                 cpi_program, 
                 cpi_accounts, 
-                &[&["SURGE".as_bytes(), ctx.accounts.surge.authority.as_ref(), &[ctx.accounts.surge.bump]]]),
+                &[pda_vault_signer]
+              ),
             claim_amount)?;
         
         //transfer sol share
@@ -296,6 +305,14 @@ pub struct Claim<'info> {
         bump=surge.bump
     )]
     pub surge: Account<'info, Surge>,
+    #[account(mut, seeds=[b"VAULT".as_ref(), surge.key().as_ref()], bump)]
+    pub pda_vault: SystemAccount<'info>,
+    #[account(
+      mut,
+      associated_token::mint = surge.mint,
+      associated_token::authority = pda_vault,
+    )]
+    pub pda_vault_ata: Account<'info, TokenAccount>,
     #[account(
         mut,
         has_one = owner
@@ -324,6 +341,7 @@ pub struct Surge {
     pub threshold: u64,
     pub spl_amount: u64,
     pub spl_address: Pubkey, // todo make this Account<'info, Mint>
+    pub mint: Pubkey,
     pub leftover_sol: u64,
     pub bump: u8,
 }

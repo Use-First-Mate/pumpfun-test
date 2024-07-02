@@ -86,7 +86,8 @@ describe("crowdfund", () => {
     //This is stub out for allowing surge to purchase tokens directly
     //It is going to "mintTo" a surge ATA a fixed amount of an SPL
     //which will later be claimed by receipt owner
-    mintProgram = await splToken.createMint(
+    mintProgram = new PublicKey(IMPORTED_ACCOUNTS.OGGY_MINT);
+    /* mintProgram = await splToken.createMint(
       provider.connection,
       signer,
       mintKeyPair.publicKey,
@@ -95,7 +96,7 @@ describe("crowdfund", () => {
       undefined,
       {},
       splToken.TOKEN_PROGRAM_ID
-    )
+    ) */
     //create ATA for surge account
     surgeAta = await splToken.getOrCreateAssociatedTokenAccount(
       provider.connection,
@@ -106,7 +107,7 @@ describe("crowdfund", () => {
     )
 
     console.log("SURGE ATA IS " + surgeAta.address)
-    const mint = await splToken.mintTo(
+    /* const mint = await splToken.mintTo(
       provider.connection,
       signer,
       mintProgram,
@@ -116,7 +117,7 @@ describe("crowdfund", () => {
       [],
       undefined,
       splToken.TOKEN_PROGRAM_ID
-    )
+    ) */
     const populatedAta = await splToken.getAccount(
       provider.connection,
       surgeAta.address,
