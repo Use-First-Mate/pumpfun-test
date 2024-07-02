@@ -1,7 +1,6 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::system_instruction;
 use anchor_lang::solana_program::pubkey::Pubkey;
-use anchor_spl::{associated_token::AssociatedToken, token::{self, Mint, Token, TokenAccount, Transfer as SplTransfer }};
+use anchor_spl::{associated_token::AssociatedToken, token::{self, Token, TokenAccount, Transfer as SplTransfer }};
 use pump_fun::{BondingCurve, Global, program::Pump};
 use pump_fun::cpi::accounts::Buy;
 
@@ -26,31 +25,29 @@ pub mod crowdfund {
 
     pub fn fund(ctx: Context<Fund>, amount: u64) -> Result<()> {
         let from_account = &ctx.accounts.signer;
-        let to_account = &ctx.accounts.surge;
-        if to_account.spl_amount > 0 {
-            return Err(ErrorCode::DepositsClosed.into())
-        }
-        //if surge is already above threshold - then stop
-        //I wonder if there's an issue here if threshold is
-        //
-        if to_account.amount_deposited > to_account.threshold {
-            return Err(ErrorCode::DepositsClosed.into())
-        }
-        //add explicit check that .claimed is false and not true
-        let transfer_instruction = system_instruction::transfer(
-            &from_account.key(), 
-            &to_account.key(), amount
-        );
+        let surge = &ctx.accounts.surge;
         
-        let result = anchor_lang::solana_program::program::invoke(
-            &transfer_instruction, 
-            &[
-             from_account.to_account_info(),
-             to_account.to_account_info()
-            ]);
-        if let Err(e) = result {
-            return Err(e.into())
+        if surge.spl_amount > 0 {
+            return Err(ErrorCode::DepositsClosed.into())
         }
+
+        if amount + surge.amount_deposited > surge.threshold {
+            return Err(ErrorCode::DepositsClosed.into())
+        }
+        // TODO time bound?
+
+        //add explicit check that .claimed is false and not true
+
+        anchor_lang::system_program::transfer(
+          CpiContext::new(
+            ctx.accounts.system_program.to_account_info(), 
+            Transfer {
+              from: ctx.accounts.signer.to_account_info(),
+              to: ctx.accounts.pda_vault.to_account_info(),
+            },
+          ), 
+          amount,
+        )?;
 
         //Update total campaign value
         //Update individual account amount
@@ -104,7 +101,7 @@ pub mod crowdfund {
         pump_fun::cpi::buy(
           cpi_context, 
           amount_token, 
-          max_sol_cost,
+          std::cmp::min(max_sol_cost, deploy_amount),
         )?;
 
         msg!(
@@ -112,7 +109,7 @@ pub mod crowdfund {
           ctx.accounts.pda_vault_ata.amount
         );
 
-        // Check balances after
+        // Without reloads, pda_vault_ata still thinks it has 0
         ctx.accounts.pda_vault_ata.reload()?;
 
         let vault_sol_after = ctx.accounts.pda_vault.lamports();
@@ -130,21 +127,18 @@ pub mod crowdfund {
 
         ctx.accounts.surge.spl_amount = vault_token_after;
         ctx.accounts.surge.leftover_sol = vault_sol_after;
-        ctx.accounts.surge.mint = ctx.accounts.mint.key();
+        ctx.accounts.surge.mint = ctx.accounts.mint.key().clone();
 
         // TODO write the mint address into Surge for claims
         Ok(())
     }
+
     pub fn claim(ctx: Context<Claim>) -> Result<()> {
         let surge_key = ctx.accounts.surge.key();
         let surge = &mut ctx.accounts.surge;
-        let signer = &mut ctx.accounts.owner;
         let receipt = &mut ctx.accounts.receipt;
-        let surge_escrow_ata = &ctx.accounts.surge_escrow_ata;
         let user_ata = &ctx.accounts.signer_ata;
         let token_program = &ctx.accounts.token_program;
-        let surge_info = surge.to_account_info();
-        let signer_info = signer.to_account_info();
 
         let pda_vault_signer: &[&[u8]] = &[
           b"VAULT",
@@ -242,6 +236,12 @@ pub struct Fund<'info> {
     pub signer: Signer<'info>,
     #[account(mut)]
     pub surge: Account<'info, Surge>,
+    #[account(
+      mut,
+      seeds = [b"VAULT".as_ref(), surge.key().as_ref()],
+      bump,
+    )]
+    pub pda_vault: SystemAccount<'info>,
     pub system_program: Program<'info, System>, //To allow the recepit account to be created
 }
 
@@ -285,23 +285,10 @@ pub struct Deploy<'info> {
     #[account()]
     pub rent: Sysvar<'info, Rent>,
     /// CHECK: only used within pumpfun program
-    #[account( address= pubkey!("Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1"))]
+    #[account(address = pubkey!("Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1"))]
     pub pump_event_authority: UncheckedAccount<'info>,
     #[account(address = pump_fun::ID)]
     pub pump_program: Program<'info, Pump>,
-    //pub mint: Account<'info, Mint>,
-    //an escrow token account needs to be created here - this is where SPLs will be claimed to
-    //it's owned by the Surge account, which is owned by the program - surge will need to be the authority
-    //when transferring from the surge escrow ata
-    // #[account(
-    //     init,
-    //     payer = signer,
-    //     token::mint = mint,
-    //     token::authority = surge
-    // )]
-    // pub surge_escrow_ata: Account<'info, TokenAccount>,
-    //need account to transfer 5% of sol to
-    //pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>
 }
 
@@ -328,9 +315,11 @@ pub struct Claim<'info> {
         has_one = owner
     )]
     pub receipt: Account<'info, Receipt>,
-    #[account(mut)]
-    pub surge_escrow_ata: Account<'info, TokenAccount>,
-    #[account(mut)]
+    #[account(
+      mut,
+      associated_token::mint = surge.mint,
+      associated_token::authority = owner,
+    )]
     pub signer_ata: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
