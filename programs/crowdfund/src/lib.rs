@@ -70,7 +70,7 @@ pub mod crowdfund {
     pub fn deploy(ctx: Context<Deploy>, amount_token: u64, max_sol_cost: u64,) -> Result<()> {
         // Calculate the creator fee and deploy amount
         let creator_fee = ctx.accounts.surge.amount_deposited * 5 / 100;
-        let _deploy_amount = ctx.accounts.surge.amount_deposited - creator_fee;
+        let deploy_amount = ctx.accounts.surge.amount_deposited - creator_fee;
 
         let vault_sol_before = ctx.accounts.pda_vault.lamports();
         let vault_token_before = ctx.accounts.pda_vault_ata.amount;
@@ -136,7 +136,7 @@ pub mod crowdfund {
         ctx.accounts.surge.leftover_sol = vault_sol_after;
         ctx.accounts.surge.mint = ctx.accounts.mint.key().clone();
 
-        // TODO write the mint address into Surge for claims
+        msg!("deploy: Success!");
         Ok(())
     }
 
