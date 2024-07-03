@@ -69,6 +69,11 @@ pub mod crowdfund {
 
     pub fn deploy(ctx: Context<Deploy>, amount_token: u64, max_sol_cost: u64,) -> Result<()> {
         // Calculate the creator fee and deploy amount
+        //
+        msg!(
+            "Admin wallet balance before transfer is { }",
+            ctx.accounts.authority.lamports(),
+        );
         let creator_fee = ctx.accounts.surge.amount_deposited * 5 / 100;
         let deploy_amount = ctx.accounts.surge.amount_deposited - creator_fee;
 
@@ -121,21 +126,37 @@ pub mod crowdfund {
 
         let vault_sol_after = ctx.accounts.pda_vault.lamports();
         let vault_token_after = ctx.accounts.pda_vault_ata.amount;
-
+        let pda_address = ctx.accounts.pda_vault.key;
         msg!(
-          "Sol: {} before, {} after. Token: {} before, {} after. Params: {} token, {} sol",
+          "Sol: {} before, {} after. Token: {} before, {} after. Params: {} token, {} sol, PDA_vault_address: {}",
           vault_sol_before,
           vault_sol_after,
           vault_token_before,
           vault_token_after,
           amount_token,
           max_sol_cost,
+          pda_address
         );
-
+        msg!(
+            "Admin wallet balance before transfer is { } amount to be transferred is { }",
+            ctx.accounts.authority.lamports(),
+            creator_fee
+        );
         ctx.accounts.surge.spl_amount = vault_token_after;
         ctx.accounts.surge.leftover_sol = vault_sol_after;
         ctx.accounts.surge.mint = ctx.accounts.mint.key().clone();
-
+        //Transfer creator fee to admin wallet
+        anchor_lang::system_program::transfer(
+            CpiContext::new_with_signer(
+              ctx.accounts.system_program.to_account_info(), 
+              Transfer {
+                from: ctx.accounts.pda_vault.to_account_info(),
+                to: ctx.accounts.authority.to_account_info()
+              },
+              &[vault_pda_signer]
+            ), 
+            creator_fee,
+          )?;
         msg!("deploy: Success!");
         Ok(())
     }
