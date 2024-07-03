@@ -245,7 +245,7 @@ pub struct InitializeSurge<'info> {
 #[derive(Accounts)]
 pub struct Fund<'info> {
     #[account(
-        init,
+        init_if_needed,
         payer = signer,
         space = 8 + 8 + 200,
         seeds = [signer.key().as_ref(), &surge.id.to_le_bytes()], //if we do multiple surge's per contract the surge should have a receipt

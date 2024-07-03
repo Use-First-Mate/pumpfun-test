@@ -14,7 +14,8 @@ describe("crowdfund", () => {
   //SOL denominated deposit for funders + derived total
   const funder1_deposit = 2
   const funder2_deposit = 2.5
-  const total_deposit = funder1_deposit + funder2_deposit
+  const funder2_deposit2 = .1
+  const total_deposit = funder1_deposit + funder2_deposit + funder2_deposit2;
 
   const program = anchor.workspace.Crowdfund as Program<Crowdfund>;
 
@@ -84,43 +85,14 @@ describe("crowdfund", () => {
       signature: airdropSignature,
     });
 
-    //This is stub out for allowing surge to purchase tokens directly
-    //It is going to "mintTo" a surge ATA a fixed amount of an SPL
-    //which will later be claimed by receipt owner
     mintProgram = new PublicKey(IMPORTED_ACCOUNTS.OGGY_MINT);
-    /* mintProgram = await splToken.createMint(
-      provider.connection,
-      signer,
-      mintKeyPair.publicKey,
-      null,
-      9,
-      undefined,
-      {},
-      splToken.TOKEN_PROGRAM_ID
-    ) */
-    //create ATA for surge account
+
     surgeAta = await splToken.getOrCreateAssociatedTokenAccount(
       provider.connection,
       signer,
       mintProgram,
       surgePDA,
       true
-    )
-
-    /* const mint = await splToken.mintTo(
-      provider.connection,
-      signer,
-      mintProgram,
-      surgeAta.address,
-      mintKeyPair,
-      total_deposit * SPL_CONVERSION,
-      [],
-      undefined,
-      splToken.TOKEN_PROGRAM_ID
-    ) */
-    const populatedAta = await splToken.getAccount(
-      provider.connection,
-      surgeAta.address,
     )
   })
   //create an SPL mint that we can use for testing
@@ -213,6 +185,23 @@ describe("crowdfund", () => {
 
     const funder2Receipt = await program.account.receipt.fetch(funder2ReceiptPDA)
     assert.equal(funder2Receipt.amountDeposited.toString(), new anchor.BN(funder2_deposit * LAMPORTS_PER_SOL).toString())
+    //confirm surge amount
+    const surgeAccount = await program.account.surge.fetch(surgePDA)
+    assert.equal(surgeAccount.amountDeposited.toString(), new anchor.BN((funder1_deposit + funder2_deposit) * LAMPORTS_PER_SOL).toString())
+  })
+  it("allows user to fund more after initial deposit", async () => {
+    const tx = await program.methods
+    .fund(new anchor.BN(funder2_deposit2 * LAMPORTS_PER_SOL))
+    .accounts({
+      signer: funder2.publicKey,
+      surge: surgePDA,
+    })
+    .signers([funder2])
+    .rpc()
+
+
+    const funder2Receipt = await program.account.receipt.fetch(funder2ReceiptPDA)
+    assert.equal(funder2Receipt.amountDeposited.toString(), new anchor.BN((funder2_deposit +funder2_deposit2) * LAMPORTS_PER_SOL).toString())
     //confirm surge amount
     const surgeAccount = await program.account.surge.fetch(surgePDA)
     assert.equal(surgeAccount.amountDeposited.toString(), new anchor.BN(total_deposit * LAMPORTS_PER_SOL).toString())
