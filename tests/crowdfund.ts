@@ -302,7 +302,7 @@ describe("crowdfund", () => {
     const surgeAccount = await program.account.surge.fetch(surgePDA)
 
 
-    assert.equal(balanceAfterDeploy, (initialAdminBalance + expectedDepositAmount), "The admin wallet balance in incorrect after deploying funds")
+    assert.equal(balanceAfterDeploy, (initialAdminBalance + expectedDepositAmount), "The admin wallet balance is incorrect after deploying funds")
     //TODO - testing needs to happen here to actually test the SPL amount
     //This is dependent on a hardcoded value
     //expect this to fail now that hardcoded value has been replaced
