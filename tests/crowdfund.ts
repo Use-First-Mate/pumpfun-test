@@ -241,7 +241,6 @@ describe("crowdfund", () => {
           owner: funder1.publicKey, // since owner is `Signer`, it's implied in `.signers([...])
           surge: surgePDA,          // since `surge` is a PDA, it should be implied from other accts
           receipt: funder1ReceiptPDA,
-          surgeEscrowAta: surgeAta.address,
           signerAta: funder1Ata.address
         })
         .signers([funder1])
@@ -364,7 +363,6 @@ describe("crowdfund", () => {
         owner: funder1.publicKey, // since owner is `Signer`, it's implied in `.signers([...])
         surge: surgePDA,          // since `surge` is a PDA, it should be implied from other accts
         receipt: funder1ReceiptPDA,
-        surgeEscrowAta: surgeAta.address,
         signerAta: funder1Ata.address
       })
       .signers([funder1])
@@ -393,7 +391,6 @@ describe("crowdfund", () => {
         owner: funder1.publicKey,
         surge: surgePDA,
         receipt: funder2ReceiptPDA,
-        surgeEscrowAta: surgeAta.address,
         signerAta: funder1Ata.address
       })
       .signers([funder1])
