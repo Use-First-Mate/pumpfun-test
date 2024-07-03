@@ -70,16 +70,12 @@ pub mod crowdfund {
     pub fn deploy(ctx: Context<Deploy>, amount_token: u64, max_sol_cost: u64,) -> Result<()> {
         // Calculate the creator fee and deploy amount
         //
-        msg!(
-            "Admin wallet balance before transfer is { }",
-            ctx.accounts.authority.lamports(),
-        );
         let creator_fee = ctx.accounts.surge.amount_deposited * 5 / 100;
         let deploy_amount = ctx.accounts.surge.amount_deposited - creator_fee;
 
-        let vault_sol_before = ctx.accounts.pda_vault.lamports();
-        let vault_token_before = ctx.accounts.pda_vault_ata.amount;
-        msg!("vault sol {} ; vault token {}", vault_sol_before, vault_token_before);
+        // let vault_sol_before = ctx.accounts.pda_vault.lamports();
+        // let vault_token_before = ctx.accounts.pda_vault_ata.amount;
+        //msg!("vault sol {} ; vault token {}", vault_sol_before, vault_token_before);
         let surge_key = ctx.accounts.surge.key();
         let vault_pda_signer: &[&[u8]] = &[
           b"VAULT",
@@ -127,21 +123,17 @@ pub mod crowdfund {
         let vault_sol_after = ctx.accounts.pda_vault.lamports();
         let vault_token_after = ctx.accounts.pda_vault_ata.amount;
         let pda_address = ctx.accounts.pda_vault.key;
-        msg!(
-          "Sol: {} before, {} after. Token: {} before, {} after. Params: {} token, {} sol, PDA_vault_address: {}",
-          vault_sol_before,
-          vault_sol_after,
-          vault_token_before,
-          vault_token_after,
-          amount_token,
-          max_sol_cost,
-          pda_address
-        );
-        msg!(
-            "Admin wallet balance before transfer is { } amount to be transferred is { }",
-            ctx.accounts.authority.lamports(),
-            creator_fee
-        );
+        // msg!(
+        //   "Sol: {} before, {} after. Token: {} before, {} after. Params: {} token, {} sol, PDA_vault_address: {}",
+        //   vault_sol_before,
+        //   vault_sol_after,
+        //   vault_token_before,
+        //   vault_token_after,
+        //   amount_token,
+        //   max_sol_cost,
+        //   pda_address
+        // );
+
         ctx.accounts.surge.spl_amount = vault_token_after;
         ctx.accounts.surge.leftover_sol = vault_sol_after;
         ctx.accounts.surge.mint = ctx.accounts.mint.key().clone();
