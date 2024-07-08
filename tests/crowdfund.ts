@@ -24,7 +24,7 @@ describe("crowdfund", () => {
   const funder1 = anchor.web3.Keypair.generate()
   const funder2 = anchor.web3.Keypair.generate()
   const [surgeCounterPDA] = PublicKey.findProgramAddressSync(
-    [Buffer.from("SURGE_COUNTER"), signer.publicKey.toBuffer()],
+    [Buffer.from("SURGE_COUNTER")],
     program.programId
   )
   const [surgePDA, surgeBump] = PublicKey.findProgramAddressSync(

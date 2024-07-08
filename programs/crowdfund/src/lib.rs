@@ -122,7 +122,7 @@ pub mod crowdfund {
 
         let vault_sol_after = ctx.accounts.pda_vault.lamports();
         let vault_token_after = ctx.accounts.pda_vault_ata.amount;
-        let pda_address = ctx.accounts.pda_vault.key;
+        //let pda_address = ctx.accounts.pda_vault.key;
         // msg!(
         //   "Sol: {} before, {} after. Token: {} before, {} after. Params: {} token, {} sol, PDA_vault_address: {}",
         //   vault_sol_before,
@@ -227,9 +227,7 @@ pub struct InitializeSurgeCounter<'info> {
     init,
     payer=signer,
     space= 8 + 64,
-    seeds=[b"SURGE_COUNTER",
-            signer.key().as_ref()
-    ], bump)]
+    seeds=[b"SURGE_COUNTER"], bump)]
     pub surge_counter: Account<'info, SurgeCounter>,
     #[account(mut)]
     pub signer: Signer<'info>,
@@ -238,9 +236,7 @@ pub struct InitializeSurgeCounter<'info> {
 #[derive(Accounts)]
 pub struct InitializeSurge<'info> {
     #[account(mut, 
-        seeds=[b"SURGE_COUNTER", 
-        signer.key().as_ref()
-    ], bump)]
+        seeds=[b"SURGE_COUNTER"], bump)]
     pub surge_counter: Account<'info, SurgeCounter>,
     #[account(
         init,
