@@ -58,10 +58,12 @@ pub mod crowdfund {
 
         //Update total campaign value
         //Update individual account amount
+        (&mut ctx.accounts.receipt).surge_id = surge.id;
         (&mut ctx.accounts.surge).amount_deposited += amount;
         (&mut ctx.accounts.receipt).amount_deposited += amount;
         (&mut ctx.accounts.receipt).claimed = false;
         (&mut ctx.accounts.receipt).owner = from_account.key().clone();
+        
 
         msg!("User funded program with { } lamports", amount);
         Ok(())
@@ -370,6 +372,7 @@ pub struct Receipt {
     vote: Pubkey,
     claimed: bool,
     owner: Pubkey,
+    surge_id: u64,
 }
 #[account]
 pub struct Surge {
