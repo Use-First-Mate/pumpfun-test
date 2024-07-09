@@ -17,6 +17,11 @@ pub mod crowdfund {
         surge_counter.next_surge_id = 1;
         Ok(())
     }
+    pub fn increment_surge_counter(ctx: Context<IncrementSurgeCounter>) -> Result<()> {
+      let surge_counter = & mut ctx.accounts.surge_counter;
+      surge_counter.next_surge_id += 1;
+      Ok(())
+    }
     pub fn initialize_surge(ctx: Context<InitializeSurge>, name: String, threshold: u64) -> Result<()> {
         let surge = &mut ctx.accounts.surge;
         let surge_counter = & mut ctx.accounts.surge_counter;
@@ -236,6 +241,14 @@ pub struct InitializeSurgeCounter<'info> {
     pub system_program: Program<'info, System>,
 }
 #[derive(Accounts)]
+pub struct IncrementSurgeCounter<'info> {
+  #[account(mut,
+    seeds=[b"SURGE_COUNTER"], bump)]
+  pub surge_counter: Account<'info, SurgeCounter>,
+  #[account(mut)]
+  pub signer: Signer<'info>,
+}
+#[derive(Accounts)]
 pub struct InitializeSurge<'info> {
     #[account(mut, 
         seeds=[b"SURGE_COUNTER"], bump)]
@@ -244,7 +257,7 @@ pub struct InitializeSurge<'info> {
         init,
         payer = signer,
         space = 500,
-        seeds= [b"SURGE".as_ref(), signer.key().as_ref(), &surge_counter.next_surge_id.to_le_bytes()], //kind of wonder if this should be unique - i.e. just surge
+        seeds= [b"SURGE".as_ref(), signer.key().as_ref(), &surge_counter.next_surge_id.to_le_bytes()], 
         bump
     )]
     pub surge: Account<'info, Surge>,
