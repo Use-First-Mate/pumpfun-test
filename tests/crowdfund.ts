@@ -327,6 +327,7 @@ describe("crowdfund", () => {
     const vaultPdaBalance = await provider.connection.getBalance(vaultPda)
 
     assert.equal(surgeAccount.leftoverSol.toNumber(), vaultPdaBalance)
+
   })
   it("disallows unauthorized users from deploying funds", async () => {
     //one of the funders attempts to deploy funds and fails
