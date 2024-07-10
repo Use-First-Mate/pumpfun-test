@@ -127,8 +127,7 @@ pub mod crowdfund {
         // Without reloads, pda_vault_ata still thinks it has 0
         ctx.accounts.pda_vault_ata.reload()?;
         
-        let vault_sol_after = ctx.accounts.pda_vault.lamports();
-        let vault_token_after = ctx.accounts.pda_vault_ata.amount;
+
         //let pda_address = ctx.accounts.pda_vault.key;
         // msg!(
         //   "Sol: {} before, {} after. Token: {} before, {} after. Params: {} token, {} sol, PDA_vault_address: {}",
@@ -140,9 +139,9 @@ pub mod crowdfund {
         //   max_sol_cost,
         //   pda_address
         // );
-
+        let vault_token_after = ctx.accounts.pda_vault_ata.amount;
         ctx.accounts.surge.spl_amount = vault_token_after;
-        ctx.accounts.surge.leftover_sol = vault_sol_after;
+        
         ctx.accounts.surge.mint = ctx.accounts.mint.key().clone();
         //Transfer creator fee to admin wallet
         anchor_lang::system_program::transfer(
@@ -156,6 +155,8 @@ pub mod crowdfund {
             ), 
             creator_fee,
           )?;
+        let vault_sol_after = ctx.accounts.pda_vault.lamports();
+        ctx.accounts.surge.leftover_sol = vault_sol_after;
         msg!("deploy: Success!");
         Ok(())
     }
@@ -339,7 +340,19 @@ pub struct Deploy<'info> {
     pub pump_program: Program<'info, Pump>,
     pub system_program: Program<'info, System>
 }
-
+#[derive(Accounts)]
+pub struct SetLeftoverSol<'info> {
+  #[account(mut)]
+    pub signer: Signer<'info>,
+  #[account(
+    mut,
+    seeds=[b"SURGE".as_ref(), surge.authority.as_ref(), &surge.id.to_le_bytes()],
+    bump=surge.bump
+  )]
+  pub surge: Account<'info, Surge>,
+  #[account(mut, seeds=[b"VAULT".as_ref(), surge.key().as_ref()], bump)]
+    pub pda_vault: SystemAccount<'info>,
+}
 #[derive(Accounts)]
 pub struct Claim<'info> {
     #[account(mut)]
