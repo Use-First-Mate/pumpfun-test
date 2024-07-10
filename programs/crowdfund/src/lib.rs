@@ -340,19 +340,7 @@ pub struct Deploy<'info> {
     pub pump_program: Program<'info, Pump>,
     pub system_program: Program<'info, System>
 }
-#[derive(Accounts)]
-pub struct SetLeftoverSol<'info> {
-  #[account(mut)]
-    pub signer: Signer<'info>,
-  #[account(
-    mut,
-    seeds=[b"SURGE".as_ref(), surge.authority.as_ref(), &surge.id.to_le_bytes()],
-    bump=surge.bump
-  )]
-  pub surge: Account<'info, Surge>,
-  #[account(mut, seeds=[b"VAULT".as_ref(), surge.key().as_ref()], bump)]
-    pub pda_vault: SystemAccount<'info>,
-}
+
 #[derive(Accounts)]
 pub struct Claim<'info> {
     #[account(mut)]
