@@ -275,15 +275,6 @@ describe("crowdfund", () => {
   })
   it("allows admin user to deploy funds and deploys funds to that wallet", async () => {
 
-      // manually fund the Vault PDA because there haven't been any fund calls
-    const vaultPdaAirdropSig = await provider.connection.requestAirdrop(vaultPda, 2 * LAMPORTS_PER_SOL)
-    const vaultPdaLatestBlockhash = await provider.connection.getLatestBlockhash();
-    await provider.connection.confirmTransaction({
-      blockhash: vaultPdaLatestBlockhash.blockhash,
-      lastValidBlockHeight: vaultPdaLatestBlockhash.lastValidBlockHeight,
-      signature: vaultPdaAirdropSig,
-    });
-    //console.log("Initialized with Howdy")
     const initialAdminBalance = await provider.connection.getBalance(signer.publicKey)
     console.log("INITIAL ADMIN BALANCE IS - should be 4983748400")
     console.log({initialAdminBalance})
@@ -331,6 +322,12 @@ describe("crowdfund", () => {
 
   })
 
+  it("keeps the surge.leftover_sol and pda_vault balance equal after deploy and before claim", async () => {
+    const surgeAccount = await program.account.surge.fetch(surgePDA)
+    const vaultPdaBalance = await provider.connection.getBalance(vaultPda)
+
+    assert.equal(surgeAccount.leftoverSol.toNumber(), vaultPdaBalance)
+  })
   it("disallows unauthorized users from deploying funds", async () => {
     //one of the funders attempts to deploy funds and fails
     try {
