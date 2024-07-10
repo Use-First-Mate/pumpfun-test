@@ -126,7 +126,7 @@ pub mod crowdfund {
 
         // Without reloads, pda_vault_ata still thinks it has 0
         ctx.accounts.pda_vault_ata.reload()?;
-
+        
         let vault_sol_after = ctx.accounts.pda_vault.lamports();
         let vault_token_after = ctx.accounts.pda_vault_ata.amount;
         //let pda_address = ctx.accounts.pda_vault.key;
@@ -395,7 +395,6 @@ pub struct Surge {
     pub amount_deposited: u64,
     pub threshold: u64,
     pub spl_amount: u64,
-    pub spl_address: Pubkey, // todo make this Account<'info, Mint>
     pub mint: Pubkey,
     pub leftover_sol: u64,
     pub bump: u8,
