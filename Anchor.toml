@@ -6,14 +6,14 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-crowdfund = "85oFXf2BbhwsdwP4kbrdxhg5f9gBamehgiL8dFCDAAxg"
+crowdfund = "1LgGMiC3JFXkx4dZpfhHfc7QS9yefeFm8kNYm4UmwGH"
 # pumpfun is pulled in in test.validator
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+cluster = "https://mainnet.helius-rpc.com/?api-key=b66eb7e2-6fe9-4d03-a114-e366ecf26ab5"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

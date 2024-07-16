@@ -4,7 +4,7 @@ use anchor_spl::{associated_token::AssociatedToken, token::{self, Token, TokenAc
 use pump_fun::{BondingCurve, Global, program::Pump};
 use pump_fun::cpi::accounts::Buy;
 
-declare_id!("85oFXf2BbhwsdwP4kbrdxhg5f9gBamehgiL8dFCDAAxg");
+declare_id!("1LgGMiC3JFXkx4dZpfhHfc7QS9yefeFm8kNYm4UmwGH");
 
 #[program]
 pub mod crowdfund {
